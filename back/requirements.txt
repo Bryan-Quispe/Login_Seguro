@@ -1,0 +1,30 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database
+psycopg2-binary
+
+# ORM (optional)
+sqlalchemy==2.0.25
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+pydantic[email]==2.5.3
+pydantic-settings==2.1.0
+
+# Facial Recognition with MediaPipe (no compilation needed)
+mediapipe
+opencv-python
+numpy
+
+# Input Validation & Sanitization
+bleach==6.1.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Rate Limiting
+slowapi==0.1.9
