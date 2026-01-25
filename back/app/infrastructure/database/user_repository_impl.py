@@ -2,11 +2,12 @@
 Login Seguro - Implementación del Repositorio de Usuarios
 Implementa IUserRepository usando PostgreSQL con protección contra SQL Injection
 """
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List
+from datetime import datetime, timedelta
 import logging
+import bcrypt
 
-from ...domain.entities.user import User
+from ...domain.entities.user import User, UserRole
 from ...domain.interfaces.user_repository import IUserRepository
 from .connection import DatabaseConnection, get_db
 
@@ -28,19 +29,20 @@ class UserRepositoryImpl(IUserRepository):
         Usa consultas parametrizadas para prevenir SQL Injection.
         """
         query = """
-            INSERT INTO users (username, email, password_hash, face_encoding, face_registered)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO users (username, email, password_hash, face_encoding, face_registered, role, requires_password_reset)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id, created_at, updated_at
         """
         
         with self._db.get_cursor() as cursor:
-            # Parámetros pasados como tupla - NUNCA concatenar strings
             cursor.execute(query, (
                 user.username,
                 user.email,
                 user.password_hash,
                 user.face_encoding,
-                user.face_registered
+                user.face_registered,
+                user.role if hasattr(user, 'role') else 'user',
+                user.requires_password_reset if hasattr(user, 'requires_password_reset') else False
             ))
             
             result = cursor.fetchone()
@@ -56,13 +58,15 @@ class UserRepositoryImpl(IUserRepository):
         query = """
             SELECT id, username, email, password_hash, face_encoding, 
                    face_registered, failed_login_attempts, locked_until,
+                   COALESCE(role, 'user') as role, 
+                   COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    created_at, updated_at
             FROM users 
             WHERE id = %s
         """
         
         with self._db.get_cursor(commit=False) as cursor:
-            cursor.execute(query, (user_id,))  # Parámetro como tupla
+            cursor.execute(query, (user_id,))
             row = cursor.fetchone()
             
             if row is None:
@@ -78,13 +82,14 @@ class UserRepositoryImpl(IUserRepository):
         query = """
             SELECT id, username, email, password_hash, face_encoding, 
                    face_registered, failed_login_attempts, locked_until,
+                   COALESCE(role, 'user') as role,
+                   COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    created_at, updated_at
             FROM users 
             WHERE username = %s
         """
         
         with self._db.get_cursor(commit=False) as cursor:
-            # El username se pasa como parámetro, NUNCA se concatena al query
             cursor.execute(query, (username,))
             row = cursor.fetchone()
             
@@ -98,6 +103,8 @@ class UserRepositoryImpl(IUserRepository):
         query = """
             SELECT id, username, email, password_hash, face_encoding, 
                    face_registered, failed_login_attempts, locked_until,
+                   COALESCE(role, 'user') as role,
+                   COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    created_at, updated_at
             FROM users 
             WHERE email = %s
@@ -112,13 +119,50 @@ class UserRepositoryImpl(IUserRepository):
             
             return self._row_to_user(row)
     
+    def find_all_blocked(self) -> List[User]:
+        """Obtiene todos los usuarios bloqueados"""
+        query = """
+            SELECT id, username, email, password_hash, face_encoding, 
+                   face_registered, failed_login_attempts, locked_until,
+                   COALESCE(role, 'user') as role,
+                   COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   created_at, updated_at
+            FROM users 
+            WHERE locked_until IS NOT NULL AND locked_until > NOW()
+            ORDER BY locked_until DESC
+        """
+        
+        with self._db.get_cursor(commit=False) as cursor:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+    
+    def find_all_users(self) -> List[User]:
+        """Obtiene todos los usuarios (excepto admin)"""
+        query = """
+            SELECT id, username, email, password_hash, face_encoding, 
+                   face_registered, failed_login_attempts, locked_until,
+                   COALESCE(role, 'user') as role,
+                   COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   created_at, updated_at
+            FROM users 
+            WHERE COALESCE(role, 'user') != 'admin'
+            ORDER BY created_at DESC
+        """
+        
+        with self._db.get_cursor(commit=False) as cursor:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+    
     def update(self, user: User) -> User:
         """Actualiza un usuario existente"""
         query = """
             UPDATE users 
             SET username = %s, email = %s, password_hash = %s,
                 face_encoding = %s, face_registered = %s,
-                failed_login_attempts = %s, locked_until = %s
+                failed_login_attempts = %s, locked_until = %s,
+                role = %s, requires_password_reset = %s
             WHERE id = %s
             RETURNING updated_at
         """
@@ -132,6 +176,8 @@ class UserRepositoryImpl(IUserRepository):
                 user.face_registered,
                 user.failed_login_attempts,
                 user.locked_until,
+                user.role if hasattr(user, 'role') else 'user',
+                user.requires_password_reset if hasattr(user, 'requires_password_reset') else False,
                 user.id
             ))
             
@@ -146,7 +192,7 @@ class UserRepositoryImpl(IUserRepository):
         """Actualiza solo el encoding facial de un usuario"""
         query = """
             UPDATE users 
-            SET face_encoding = %s, face_registered = TRUE
+            SET face_encoding = %s, face_registered = TRUE, requires_password_reset = FALSE
             WHERE id = %s
         """
         
@@ -170,6 +216,46 @@ class UserRepositoryImpl(IUserRepository):
         with self._db.get_cursor() as cursor:
             cursor.execute(query, (attempts, locked_until, user_id))
             return cursor.rowcount > 0
+    
+    def unlock_user(self, user_id: int) -> bool:
+        """
+        Desbloquea un usuario y requiere que resetee su contraseña y rostro.
+        """
+        query = """
+            UPDATE users 
+            SET locked_until = NULL, 
+                failed_login_attempts = 0,
+                face_encoding = NULL,
+                face_registered = FALSE,
+                requires_password_reset = TRUE
+            WHERE id = %s
+        """
+        
+        with self._db.get_cursor() as cursor:
+            cursor.execute(query, (user_id,))
+            success = cursor.rowcount > 0
+            
+            if success:
+                logger.info(f"Usuario desbloqueado ID: {user_id} - requiere resetear contraseña y rostro")
+            
+            return success
+    
+    def update_password(self, user_id: int, new_password_hash: str) -> bool:
+        """Actualiza la contraseña de un usuario"""
+        query = """
+            UPDATE users 
+            SET password_hash = %s, requires_password_reset = FALSE
+            WHERE id = %s
+        """
+        
+        with self._db.get_cursor() as cursor:
+            cursor.execute(query, (new_password_hash, user_id))
+            success = cursor.rowcount > 0
+            
+            if success:
+                logger.info(f"Contraseña actualizada para usuario ID: {user_id}")
+            
+            return success
     
     def delete(self, user_id: int) -> bool:
         """Elimina un usuario"""
@@ -195,6 +281,52 @@ class UserRepositoryImpl(IUserRepository):
             face_registered=row[5],
             failed_login_attempts=row[6],
             locked_until=row[7],
-            created_at=row[8],
-            updated_at=row[9]
+            role=row[8] if len(row) > 8 else 'user',
+            requires_password_reset=row[9] if len(row) > 9 else False,
+            created_at=row[10] if len(row) > 10 else None,
+            updated_at=row[11] if len(row) > 11 else None
         )
+    
+    def create_admin_if_not_exists(self, email: str, password: str) -> Optional[User]:
+        """Crea el usuario administrador si no existe"""
+        existing = self.find_by_email(email)
+        if existing:
+            return existing
+        
+        # Hash password
+        password_bytes = password.encode('utf-8')[:72]
+        salt = bcrypt.gensalt(rounds=12)
+        password_hash = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+        
+        admin = User(
+            username="admin",
+            email=email,
+            password_hash=password_hash,
+            role=UserRole.ADMIN,
+            face_registered=False,  # Debe registrar su rostro la primera vez
+            requires_password_reset=False
+        )
+        
+        return self.create(admin)
+    
+    def create_auditor_if_not_exists(self, username: str, password: str) -> Optional[User]:
+        """Crea el usuario auditor si no existe"""
+        existing = self.find_by_username(username)
+        if existing:
+            return existing
+        
+        # Hash password
+        password_bytes = password.encode('utf-8')[:72]
+        salt = bcrypt.gensalt(rounds=12)
+        password_hash = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+        
+        auditor = User(
+            username=username,
+            email="auditor@loginseguro.com",
+            password_hash=password_hash,
+            role=UserRole.AUDITOR,
+            face_registered=False,  # Debe registrar su rostro la primera vez
+            requires_password_reset=False
+        )
+        
+        return self.create(auditor)

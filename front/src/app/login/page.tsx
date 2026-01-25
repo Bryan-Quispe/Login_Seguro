@@ -61,7 +61,11 @@ export default function LoginPage() {
                 } else if (parsed.requires_face_verification) {
                     router.push('/face-verify');
                 } else {
-                    router.push('/dashboard');
+                    // Fallback directo si no requiere verificación
+                    const role = parsed.user?.role;
+                    if (role === 'admin') router.push('/admin');
+                    else if (role === 'auditor') router.push('/audit');
+                    else router.push('/dashboard');
                 }
             } else {
                 // Default to face-register for first-time users

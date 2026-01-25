@@ -55,7 +55,7 @@ class VerifyFaceUseCase:
             if user.is_locked():
                 remaining = (user.locked_until - datetime.now()).seconds // 60
                 logger.warning(f"Intento de verificación facial en cuenta bloqueada: {user.username}")
-                return False, f"Cuenta bloqueada. Intente en {remaining} minutos", {
+                return False, "Cuenta bloqueada por seguridad. Contacte con el administrador.", {
                     "account_locked": True,
                     "locked_until": user.locked_until.isoformat() if user.locked_until else None,
                     "remaining_minutes": remaining
@@ -86,7 +86,8 @@ class VerifyFaceUseCase:
                     "verified": True,
                     "is_real": details.get('is_real', True),
                     "confidence": details.get('spoof_confidence', 1.0),
-                    "match_distance": details.get('distance', 0.0)
+                    "match_distance": details.get('distance', 0.0),
+                    "role": user.role  # Incluir rol para redirección
                 }
             else:
                 # Manejar intento fallido

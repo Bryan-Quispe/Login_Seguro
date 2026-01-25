@@ -83,22 +83,17 @@ async def verify_face(
     - Requiere token JWT válido
     - Verifica anti-spoofing (detecta fotos/videos)
     - Compara con el encoding facial almacenado
+    - SIEMPRE retorna 200 para evitar redirecciones en el frontend
     """
     user_id = get_current_user_id(payload)
     
     use_case = VerifyFaceUseCase(user_repo, face_service)
     success, message, details = use_case.execute(user_id, data)
     
-    status_code = status.HTTP_200_OK if success else status.HTTP_401_UNAUTHORIZED
-    
-    if not success:
-        raise HTTPException(
-            status_code=status_code,
-            detail=message
-        )
-    
+    # SIEMPRE retornar 200 con success=true/false
+    # Esto evita que el interceptor del frontend redirija a login
     return MessageResponse(
-        success=True,
+        success=success,
         message=message,
         data=details
     )

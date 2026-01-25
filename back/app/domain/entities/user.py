@@ -5,7 +5,15 @@ Definición de la entidad de dominio User siguiendo DDD
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+from enum import Enum
 import json
+
+
+class UserRole(str, Enum):
+    """Roles de usuario en el sistema"""
+    USER = "user"
+    ADMIN = "admin"
+    AUDITOR = "auditor"  # Rol separado para auditoría
 
 
 @dataclass
@@ -20,6 +28,8 @@ class User:
     face_registered: bool = False
     failed_login_attempts: int = 0
     locked_until: Optional[datetime] = None
+    role: str = UserRole.USER  # Rol del usuario (user/admin/auditor)
+    requires_password_reset: bool = False  # Si debe cambiar contraseña
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -28,6 +38,21 @@ class User:
         if self.locked_until is None:
             return False
         return datetime.now() < self.locked_until
+    
+    def is_permanently_locked(self) -> bool:
+        """Verifica si está bloqueado permanentemente (hasta que admin desbloquee)"""
+        if self.locked_until is None:
+            return False
+        # Si locked_until es más de 1 año en el futuro, es bloqueo permanente
+        return (self.locked_until - datetime.now()).days > 365
+    
+    def is_admin(self) -> bool:
+        """Verifica si es administrador"""
+        return self.role == UserRole.ADMIN
+    
+    def is_auditor(self) -> bool:
+        """Verifica si es auditor"""
+        return self.role == UserRole.AUDITOR
     
     def get_face_encoding_list(self) -> Optional[list]:
         """Convierte el encoding facial de JSON a lista"""

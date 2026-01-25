@@ -7,7 +7,7 @@ import { faceApi } from '@/services/api';
 
 interface FaceCaptureProps {
     mode: 'register' | 'verify';
-    onSuccess: () => void;
+    onSuccess: (role?: string) => void;
     onError?: (error: string) => void;
 }
 
@@ -19,6 +19,7 @@ interface ApiResponse {
         account_locked?: boolean;
         locked_until?: string;
         remaining_minutes?: number;
+        role?: string;
     };
 }
 
@@ -61,7 +62,7 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 setMessage(response.message);
                 setRemainingAttempts(3); // Reset attempts
                 setTimeout(() => {
-                    onSuccess();
+                    onSuccess(response.data?.role);
                 }, 1500);
             } else {
                 handleFailure(response);
@@ -166,13 +167,34 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 </p>
             </div>
 
+            {/* Important: No accessories warning - Only show for register mode */}
+            {mode === 'register' && status !== 'success' && (
+                <div className="mb-6 p-4 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                    <div className="flex items-start space-x-3">
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                            <p className="text-sm text-orange-300 font-semibold mb-2">
+                                Requisitos para el registro facial:
+                            </p>
+                            <ul className="text-xs text-gray-300 space-y-1">
+                                <li>❌ <strong>Sin lentes</strong> (de sol o recetados)</li>
+                                <li>❌ <strong>Sin mascarilla</strong> o cobertura facial</li>
+                                <li>❌ <strong>Sin gorra</strong>, sombrero o accesorios</li>
+                                <li>✅ Buena iluminación frontal</li>
+                                <li>✅ Mire directamente a la cámara</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Remaining attempts indicator */}
             {mode === 'verify' && status !== 'locked' && status !== 'success' && (
                 <div className={`mb-6 p-4 rounded-lg ${remainingAttempts <= 1
-                        ? 'bg-red-500/10 border border-red-500/20'
-                        : remainingAttempts === 2
-                            ? 'bg-yellow-500/10 border border-yellow-500/20'
-                            : 'bg-blue-500/10 border border-blue-500/20'
+                    ? 'bg-red-500/10 border border-red-500/20'
+                    : remainingAttempts === 2
+                        ? 'bg-yellow-500/10 border border-yellow-500/20'
+                        : 'bg-blue-500/10 border border-blue-500/20'
                     }`}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -198,8 +220,8 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                                 <div
                                     key={i}
                                     className={`w-3 h-3 rounded-full ${i <= remainingAttempts
-                                            ? remainingAttempts <= 1 ? 'bg-red-500' : remainingAttempts === 2 ? 'bg-yellow-500' : 'bg-blue-500'
-                                            : 'bg-gray-600'
+                                        ? remainingAttempts <= 1 ? 'bg-red-500' : remainingAttempts === 2 ? 'bg-yellow-500' : 'bg-blue-500'
+                                        : 'bg-gray-600'
                                         }`}
                                 />
                             ))}

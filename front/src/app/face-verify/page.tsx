@@ -8,9 +8,15 @@ import { FaceCapture } from '@/components/FaceCapture';
 export default function FaceVerifyPage() {
     const router = useRouter();
 
-    const handleSuccess = () => {
-        // Face verified successfully, go to dashboard
-        router.push('/dashboard');
+    const handleSuccess = (role?: string) => {
+        // Redirigir según el rol
+        if (role === 'admin') {
+            router.push('/admin');
+        } else if (role === 'auditor') {
+            router.push('/audit');
+        } else {
+            router.push('/dashboard');
+        }
     };
 
     const handleError = (error: string) => {

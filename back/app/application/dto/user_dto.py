@@ -138,6 +138,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: Optional[str] = None
+    role: str = "user"
     face_registered: bool
     
     class Config:
