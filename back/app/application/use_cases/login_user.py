@@ -70,17 +70,19 @@ class LoginUserUseCase:
             token = self._generate_token(user)
             
             # Determinar siguiente paso
-            # Todos los roles (user, admin, auditor) requieren verificación facial
-            # si ya tienen el rostro registrado
-            requires_face_registration = not user.face_registered
-            requires_face_verification = user.face_registered
+            # PRIORIDAD 1: Cambio de contraseña obligatorio
+            requires_password_reset = getattr(user, 'requires_password_reset', False)
             
-            # IMPORTANTE: No resetear intentos fallidos todavía si requiere verificación facial
-            # Los intentos solo se resetean al completar exitosamente TODO el proceso de login
-            if user.failed_login_attempts > 0 and not requires_face_verification:
-                self._user_repository.update_failed_attempts(user.id, 0, None)
+            # PRIORIDAD 2: Registro o verificación facial
+            # Solo aplica si no requiere cambio de contraseña
+            requires_face_registration = not requires_password_reset and not user.face_registered
+            requires_face_verification = not requires_password_reset and user.face_registered
             
-            logger.info(f"Login exitoso (credenciales): {user.username} [role={getattr(user, 'role', 'user')}]")
+            # IMPORTANTE: NO resetear intentos fallidos aquí
+            # Los intentos SOLO se resetean al completar exitosamente la verificación facial
+            # Esto previene que un atacante evada el bloqueo saliendo y volviendo a entrar
+            
+            logger.info(f"Login exitoso (credenciales): {user.username} [role={getattr(user, 'role', 'user')}, requires_password_reset={requires_password_reset}]")
             
             user_response = UserResponse(
                 id=user.id,
@@ -96,7 +98,8 @@ class LoginUserUseCase:
                 expires_in=self._settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
                 user=user_response,
                 requires_face_registration=requires_face_registration,
-                requires_face_verification=requires_face_verification
+                requires_face_verification=requires_face_verification,
+                requires_password_reset=requires_password_reset
             )
             
         except Exception as e:
@@ -127,6 +130,7 @@ class LoginUserUseCase:
             "sub": str(user.id),
             "username": user.username,
             "face_registered": user.face_registered,
+            "role": user.role if hasattr(user, 'role') else 'user',  # Incluir rol para redirección
             "exp": expire,
             "iat": datetime.utcnow()
         }

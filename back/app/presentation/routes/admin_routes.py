@@ -320,3 +320,217 @@ async def enable_user(
         message=f"Usuario '{user.username}' habilitado.",
         data={"user_id": user_id, "enabled": True}
     )
+
+
+# ===== NUEVOS ENDPOINTS PARA GESTIÓN COMPLETA DE USUARIOS =====
+
+import bcrypt
+from pydantic import Field, EmailStr
+from typing import Optional
+
+
+class CreateUserRequest(BaseModel):
+    """Request para crear un nuevo usuario"""
+    username: str = Field(..., min_length=3, max_length=50)
+    # NO password field - la contraseña por defecto será igual al username
+    email: Optional[str] = None
+    role: str = Field(default="user", pattern="^(user|auditor)$")  # Solo user o auditor
+
+
+class UpdateUserRequest(BaseModel):
+    """Request para actualizar un usuario"""
+    email: Optional[str] = None
+    role: Optional[str] = Field(default=None, pattern="^(user|auditor)$")
+    requires_password_reset: Optional[bool] = None
+
+
+class SearchUsersResponse(BaseModel):
+    """Respuesta de búsqueda de usuarios"""
+    success: bool
+    users: List[UserListItem]
+    total: int
+    query: str
+
+
+@router.post("/users", response_model=MessageResponse)
+async def create_user(
+    request: Request,
+    data: CreateUserRequest,
+    admin = Depends(require_admin),
+    user_repo: UserRepositoryImpl = Depends(get_user_repository),
+    audit_service: AuditService = Depends(get_audit_service)
+):
+    """
+    Crea un nuevo usuario (solo admin puede crear usuarios).
+    El usuario creado deberá registrar su rostro en el primer login.
+    """
+    # Verificar si el username ya existe
+    existing = user_repo.find_by_username(data.username)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de usuario ya está en uso"
+        )
+    
+    # Verificar email si se proporciona
+    if data.email:
+        existing_email = user_repo.find_by_email(data.email)
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El correo electrónico ya está registrado"
+            )
+    
+    
+    # La contraseña por defecto es el mismo username
+    # El usuario deberá cambiarla en el primer login
+    default_password = data.username
+    password_bytes = default_password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt(rounds=12)
+    password_hash = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+    
+    # Crear usuario con requires_password_reset=True
+    from ...domain.entities.user import User
+    new_user = User(
+        username=data.username,
+        email=data.email,
+        password_hash=password_hash,
+        role=data.role,
+        face_registered=False,
+        requires_password_reset=True  # IMPORTANTE: Forzar cambio de contraseña
+    )
+    
+    created_user = user_repo.create(new_user)
+    
+    # Registrar en auditoría
+    await audit_service.log_action(
+        request=request,
+        action="user_created",
+        admin_id=admin.id,
+        admin_username=admin.username,
+        target_user_id=created_user.id,
+        target_username=created_user.username,
+        details=f"Usuario creado con rol: {data.role}"
+    )
+    
+    logger.info(f"Admin {admin.username} creó usuario {created_user.username} (ID: {created_user.id})")
+    
+    return MessageResponse(
+        success=True,
+        message=f"Usuario '{created_user.username}' creado exitosamente.",
+        data={
+            "user_id": created_user.id,
+            "username": created_user.username,
+            "role": created_user.role
+        }
+    )
+
+
+@router.get("/users/search", response_model=SearchUsersResponse)
+async def search_users(
+    q: str = "",
+    admin = Depends(require_admin),
+    user_repo: UserRepositoryImpl = Depends(get_user_repository)
+):
+    """
+    Busca usuarios por username o email.
+    """
+    all_users = user_repo.find_all_users()
+    
+    # Filtrar por búsqueda
+    query = q.lower().strip()
+    filtered = []
+    
+    for u in all_users:
+        if query in u.username.lower() or (u.email and query in u.email.lower()):
+            filtered.append(UserListItem(
+                id=u.id,
+                username=u.username,
+                email=u.email or "",
+                role=u.role,
+                face_registered=u.face_registered,
+                is_locked=u.is_locked(),
+                locked_until=u.locked_until.isoformat() if u.locked_until else None,
+                failed_attempts=u.failed_login_attempts,
+                requires_password_reset=u.requires_password_reset
+            ))
+    
+    return SearchUsersResponse(
+        success=True,
+        users=filtered,
+        total=len(filtered),
+        query=q
+    )
+
+
+@router.put("/users/{user_id}", response_model=MessageResponse)
+async def update_user(
+    request: Request,
+    user_id: int,
+    data: UpdateUserRequest,
+    admin = Depends(require_admin),
+    user_repo: UserRepositoryImpl = Depends(get_user_repository),
+    audit_service: AuditService = Depends(get_audit_service)
+):
+    """
+    Actualiza datos de un usuario existente.
+    """
+    user = user_repo.find_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    if user.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede modificar al administrador"
+        )
+    
+    changes = []
+    
+    # Actualizar email si se proporciona
+    if data.email is not None:
+        if data.email != user.email:
+            existing_email = user_repo.find_by_email(data.email)
+            if existing_email and existing_email.id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El correo electrónico ya está registrado"
+                )
+            user.email = data.email
+            changes.append(f"email: {data.email}")
+    
+    # Actualizar rol si se proporciona
+    if data.role is not None:
+        if data.role != user.role:
+            user.role = data.role
+            changes.append(f"rol: {data.role}")
+    
+    # Actualizar requires_password_reset si se proporciona
+    if data.requires_password_reset is not None:
+        user.requires_password_reset = data.requires_password_reset
+        changes.append(f"reset_password: {data.requires_password_reset}")
+    
+    user_repo.update(user)
+    
+    # Registrar en auditoría
+    await audit_service.log_action(
+        request=request,
+        action="user_updated",
+        admin_id=admin.id,
+        admin_username=admin.username,
+        target_user_id=user_id,
+        target_username=user.username,
+        details=f"Cambios: {', '.join(changes)}" if changes else "Sin cambios"
+    )
+    
+    logger.info(f"Admin {admin.username} actualizó usuario {user.username} (ID: {user_id})")
+    
+    return MessageResponse(
+        success=True,
+        message=f"Usuario '{user.username}' actualizado.",
+        data={"user_id": user_id, "changes": changes}
+    )
+

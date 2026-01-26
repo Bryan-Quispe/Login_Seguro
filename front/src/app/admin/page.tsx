@@ -38,11 +38,27 @@ export default function AdminPage() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loginData, setLoginData] = useState({ username: '', password: '' });
     const [users, setUsers] = useState<User[]>([]);
+    const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(false);
     const [processingUserId, setProcessingUserId] = useState<number | null>(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [adminName, setAdminName] = useState('Administrador');
+    const [newUserData, setNewUserData] = useState({
+        username: '',
+        email: '',
+        role: 'user'
+    });
+
+    // Estado para código de respaldo del admin
+    const [backupCode, setBackupCode] = useState<string | null>(null);
+    const [generatingCode, setGeneratingCode] = useState(false);
+    const [hasExistingBackupCode, setHasExistingBackupCode] = useState<boolean>(false);
 
     // Verificar token de dispositivo al cargar
     const router = useRouter();
@@ -61,6 +77,12 @@ export default function AdminPage() {
             if (token) {
                 setIsAuthenticated(true);
                 fetchData(token);
+                fetchBackupCodeStatus(token);
+                // Obtener nombre del admin del token
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    if (payload.username) setAdminName(payload.username);
+                } catch { /* ignore parse errors */ }
             } else {
                 // No hay sesión, redirigir a login
                 router.push('/login');
@@ -83,6 +105,21 @@ export default function AdminPage() {
             setShowDeviceSetup(false);
         } else {
             setError('Token de dispositivo inválido');
+        }
+    };
+
+    // Obtener estado del código de respaldo
+    const fetchBackupCodeStatus = async (token: string) => {
+        try {
+            const response = await fetch(`${API_URL}/api/face/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (data.has_backup_code !== undefined) {
+                setHasExistingBackupCode(data.has_backup_code);
+            }
+        } catch (error) {
+            console.error('Error fetching backup code status:', error);
         }
     };
 
@@ -111,6 +148,7 @@ export default function AdminPage() {
             const usersData = await usersRes.json();
             if (usersData.success) {
                 setUsers(usersData.users);
+                setFilteredUsers(usersData.users);
             }
 
         } catch (err) {
@@ -217,6 +255,141 @@ export default function AdminPage() {
         router.push('/login');
     };
 
+    // Generar código de respaldo para el admin
+    const handleGenerateBackupCode = async () => {
+        const token = Cookies.get('access_token');
+        if (!token) return;
+
+        setGeneratingCode(true);
+        setSuccess('');
+        setError('');
+
+        try {
+            const response = await fetch(`${API_URL}/api/face/backup-code/generate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (data.success && data.backup_code) {
+                setBackupCode(data.backup_code);
+                setHasExistingBackupCode(true);
+                setSuccess('¡Código de respaldo generado! Guárdelo en un lugar seguro.');
+            } else {
+                setError(data.message || 'Error al generar código');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setGeneratingCode(false);
+        }
+    };
+
+    // ===== NUEVAS FUNCIONES PARA GESTIÓN DE USUARIOS =====
+
+    // Búsqueda de usuarios
+    const handleSearch = (query: string) => {
+        setSearchQuery(query);
+        if (!query.trim()) {
+            setFilteredUsers(users);
+        } else {
+            const filtered = users.filter(
+                u => u.username.toLowerCase().includes(query.toLowerCase()) ||
+                    (u.email && u.email.toLowerCase().includes(query.toLowerCase()))
+            );
+            setFilteredUsers(filtered);
+        }
+    };
+
+    // Crear usuario
+    const handleCreateUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const token = Cookies.get('access_token');
+        if (!token) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_URL}/api/admin/users`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(newUserData)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setSuccess(`Usuario "${newUserData.username}" creado exitosamente.`);
+                setShowCreateModal(false);
+                setNewUserData({ username: '', email: '', role: 'user' });
+                fetchData(token);
+            } else {
+                setError(data.detail || data.message || 'Error al crear usuario');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Editar usuario
+    const handleEditUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const token = Cookies.get('access_token');
+        if (!token || !editingUser) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_URL}/api/admin/users/${editingUser.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    email: editingUser.email,
+                    role: editingUser.role,
+                    requires_password_reset: editingUser.requires_password_reset
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setSuccess(`Usuario "${editingUser.username}" actualizado.`);
+                setShowEditModal(false);
+                setEditingUser(null);
+                fetchData(token);
+            } else {
+                setError(data.detail || data.message || 'Error al actualizar usuario');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openEditModal = (user: User) => {
+        setEditingUser({ ...user });
+        setShowEditModal(true);
+    };
+
+    // Obtener hora del día para saludo
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return '¡Buenos días';
+        if (hour < 18) return '¡Buenas tardes';
+        return '¡Buenas noches';
+    };
+
     // Pantalla de acceso denegado - dispositivo no autorizado
     if (deviceAuthorized === false && !showDeviceSetup) {
         return (
@@ -315,6 +488,18 @@ export default function AdminPage() {
                                 </Button>
                             </div>
                         )}
+                        {!error && (
+                            <div className="text-center text-gray-400 text-sm">
+                                <p>Redirigiendo al login...</p>
+                                <Button
+                                    className="mt-4 w-full"
+                                    variant="secondary"
+                                    onClick={() => router.push('/login')}
+                                >
+                                    Ir al Login Ahora
+                                </Button>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -325,15 +510,74 @@ export default function AdminPage() {
     return (
         <div className="min-h-screen p-6">
             <div className="max-w-6xl mx-auto">
-                {/* Header */}
-                <div className="flex justify-between items-center mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold text-white">Panel de Administrador</h1>
-                        <p className="text-gray-400 mt-1">Gestión de usuarios del sistema</p>
+                {/* Header con bienvenida personalizada */}
+                <div className="mb-8">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold text-white">
+                                {getGreeting()}, {adminName}!
+                            </h1>
+                            <p className="text-gray-400 mt-1">Panel de Administración - Gestión de usuarios del sistema</p>
+                        </div>
+                        <Button variant="secondary" onClick={handleLogout} aria-label="Cerrar sesión">
+                            Cerrar Sesión
+                        </Button>
                     </div>
-                    <Button variant="secondary" onClick={handleLogout}>
-                        Cerrar Sesión
-                    </Button>
+
+                    {/* Barra de búsqueda y botón crear */}
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1">
+                            <Input
+                                name="search"
+                                type="text"
+                                placeholder="🔍 Buscar usuarios por nombre o correo..."
+                                value={searchQuery}
+                                onChange={(e) => handleSearch(e.target.value)}
+                                aria-label="Buscar usuarios"
+                            />
+                        </div>
+                        <Button onClick={() => setShowCreateModal(true)} aria-label="Crear nuevo usuario">
+                            + Nuevo Usuario
+                        </Button>
+                    </div>
+
+                    {/* Código de respaldo del Admin */}
+                    <div className={`mt-4 p-4 rounded-lg ${hasExistingBackupCode ? 'bg-green-500/10 border border-green-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <svg className={`w-5 h-5 ${hasExistingBackupCode ? 'text-green-400' : 'text-amber-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                </svg>
+                                <div>
+                                    <span className={`text-sm font-medium ${hasExistingBackupCode ? 'text-green-400' : 'text-amber-400'}`}>
+                                        Código de Respaldo
+                                    </span>
+                                    <p className="text-xs text-gray-500">
+                                        Estado: {hasExistingBackupCode ? (
+                                            <span className="text-green-400">✓ Configurado</span>
+                                        ) : (
+                                            <span className="text-amber-400">⚠️ No configurado</span>
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {backupCode && (
+                                    <code className="bg-gray-800 px-3 py-1 rounded font-mono text-green-400 text-sm">
+                                        {backupCode}
+                                    </code>
+                                )}
+                                <Button
+                                    variant="secondary"
+                                    className={`text-xs py-1 px-3 ${hasExistingBackupCode ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400'}`}
+                                    onClick={handleGenerateBackupCode}
+                                    isLoading={generatingCode}
+                                >
+                                    {hasExistingBackupCode ? 'Regenerar' : 'Generar'} Código
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -382,17 +626,25 @@ export default function AdminPage() {
                                     <tr className="border-b border-gray-700">
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Usuario</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Email</th>
+                                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Rol</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Rostro</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Estado</th>
-                                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Intentos</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {users.map((user) => (
+                                    {filteredUsers.map((user) => (
                                         <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800/50">
                                             <td className="py-3 px-4 text-white font-medium">{user.username}</td>
                                             <td className="py-3 px-4 text-gray-300">{user.email || '-'}</td>
+                                            <td className="py-3 px-4">
+                                                <span className={`px-2 py-1 text-xs rounded-full ${user.role === 'auditor'
+                                                    ? 'bg-purple-500/10 text-purple-400'
+                                                    : 'bg-blue-500/10 text-blue-400'
+                                                    }`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
                                             <td className="py-3 px-4">
                                                 {user.face_registered ? (
                                                     <span className="px-2 py-1 text-xs bg-green-500/10 text-green-400 rounded-full">
@@ -411,7 +663,7 @@ export default function AdminPage() {
                                                     </span>
                                                 ) : user.requires_password_reset ? (
                                                     <span className="px-2 py-1 text-xs bg-yellow-500/10 text-yellow-400 rounded-full">
-                                                        ⚠️ Resetear pass
+                                                        ⚠️ Reset pass
                                                     </span>
                                                 ) : (
                                                     <span className="px-2 py-1 text-xs bg-green-500/10 text-green-400 rounded-full">
@@ -419,46 +671,53 @@ export default function AdminPage() {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="py-3 px-4 text-gray-300">{user.failed_attempts}</td>
                                             <td className="py-3 px-4">
                                                 <div className="flex gap-2">
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="text-xs py-1 px-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400"
+                                                        onClick={() => openEditModal(user)}
+                                                        aria-label={`Editar usuario ${user.username}`}
+                                                    >
+                                                        ✏️ Editar
+                                                    </Button>
                                                     {user.is_locked ? (
                                                         <>
                                                             <Button
                                                                 variant="primary"
-                                                                className="text-xs py-1 px-3"
+                                                                className="text-xs py-1 px-2"
                                                                 onClick={() => handleUnlock(user.id, user.username)}
                                                                 isLoading={processingUserId === user.id}
                                                             >
-                                                                🔓 Desbloquear
+                                                                🔓
                                                             </Button>
                                                             <Button
                                                                 variant="secondary"
-                                                                className="text-xs py-1 px-3 bg-green-500/20 hover:bg-green-500/30 text-green-400"
+                                                                className="text-xs py-1 px-2 bg-green-500/20 hover:bg-green-500/30 text-green-400"
                                                                 onClick={() => handleEnable(user.id, user.username)}
                                                                 isLoading={processingUserId === user.id}
                                                             >
-                                                                ✓ Habilitar
+                                                                ✓
                                                             </Button>
                                                         </>
                                                     ) : (
                                                         <Button
                                                             variant="secondary"
-                                                            className="text-xs py-1 px-3 bg-red-500/20 hover:bg-red-500/30 text-red-400"
+                                                            className="text-xs py-1 px-2 bg-red-500/20 hover:bg-red-500/30 text-red-400"
                                                             onClick={() => handleDisable(user.id, user.username)}
                                                             isLoading={processingUserId === user.id}
                                                         >
-                                                            ✗ Deshabilitar
+                                                            ✗
                                                         </Button>
                                                     )}
                                                 </div>
                                             </td>
                                         </tr>
                                     ))}
-                                    {users.length === 0 && (
+                                    {filteredUsers.length === 0 && (
                                         <tr>
                                             <td colSpan={6} className="py-8 text-center text-gray-400">
-                                                No hay usuarios registrados
+                                                {searchQuery ? 'No se encontraron usuarios' : 'No hay usuarios registrados'}
                                             </td>
                                         </tr>
                                     )}
@@ -491,6 +750,138 @@ export default function AdminPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Modal Crear Usuario */}
+            {showCreateModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <Card className="w-full max-w-md">
+                        <CardHeader>
+                            <CardTitle>Crear Nuevo Usuario</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleCreateUser} className="space-y-4">
+                                <Input
+                                    label="Nombre de usuario"
+                                    name="username"
+                                    type="text"
+                                    value={newUserData.username}
+                                    onChange={(e) => setNewUserData({ ...newUserData, username: e.target.value })}
+                                    placeholder="usuario123"
+                                    required
+                                    aria-required="true"
+                                />
+                                {/* Info sobre contraseña por defecto */}
+                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                                    <p className="text-sm text-amber-400">
+                                        ⚠️ <strong>Contraseña temporal:</strong> El usuario recibirá como contraseña
+                                        su mismo nombre de usuario. Deberá cambiarla en el primer inicio de sesión.
+                                    </p>
+                                </div>
+                                <Input
+                                    label="Email (opcional)"
+                                    name="email"
+                                    type="email"
+                                    value={newUserData.email}
+                                    onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+                                    placeholder="correo@ejemplo.com"
+                                />
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-gray-300">Rol</label>
+                                    <select
+                                        className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-violet-500"
+                                        value={newUserData.role}
+                                        onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value })}
+                                        aria-label="Seleccionar rol del usuario"
+                                    >
+                                        <option value="user">Usuario</option>
+                                        <option value="auditor">Auditor</option>
+                                    </select>
+                                </div>
+                                <div className="flex gap-3 pt-4">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="flex-1"
+                                        onClick={() => {
+                                            setShowCreateModal(false);
+                                            setNewUserData({ username: '', email: '', role: 'user' });
+                                        }}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button type="submit" className="flex-1" isLoading={loading}>
+                                        Crear Usuario
+                                    </Button>
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Modal Editar Usuario */}
+            {showEditModal && editingUser && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <Card className="w-full max-w-md">
+                        <CardHeader>
+                            <CardTitle>Editar Usuario: {editingUser.username}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleEditUser} className="space-y-4">
+                                <Input
+                                    label="Email"
+                                    name="email"
+                                    type="email"
+                                    value={editingUser.email || ''}
+                                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                                    placeholder="correo@ejemplo.com"
+                                />
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-gray-300">Rol</label>
+                                    <select
+                                        className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-violet-500"
+                                        value={editingUser.role}
+                                        onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                                        aria-label="Cambiar rol del usuario"
+                                    >
+                                        <option value="user">Usuario</option>
+                                        <option value="auditor">Auditor</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                    <input
+                                        type="checkbox"
+                                        id="requiresReset"
+                                        checked={editingUser.requires_password_reset}
+                                        onChange={(e) => setEditingUser({ ...editingUser, requires_password_reset: e.target.checked })}
+                                        className="w-4 h-4 text-violet-500 bg-gray-800 border-gray-600 rounded focus:ring-violet-500"
+                                    />
+                                    <label htmlFor="requiresReset" className="text-sm text-gray-300">
+                                        Requiere cambio de contraseña
+                                    </label>
+                                </div>
+                                <div className="flex gap-3 pt-4">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="flex-1"
+                                        onClick={() => {
+                                            setShowEditModal(false);
+                                            setEditingUser(null);
+                                        }}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button type="submit" className="flex-1" isLoading={loading}>
+                                        Guardar Cambios
+                                    </Button>
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }
+

@@ -1,0 +1,21 @@
+# Security Analysis Configuration
+# Run Bandit (Python static analysis for security)
+
+# To run Bandit analysis on the backend:
+# pip install bandit
+# bandit -r back/app -f json -o security_report_bandit.json
+
+# Configuration file for Bandit
+[bandit]
+# Skip these test IDs
+skips = B101
+
+# Only run these types of tests
+tests = B102,B103,B104,B105,B106,B107,B108,B110
+
+# Exclude these directories
+exclude_dirs = tests,venv,.venv,__pycache__
+
+# Report format
+format = json
+output = security_report_bandit.json

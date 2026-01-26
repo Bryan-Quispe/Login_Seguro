@@ -30,8 +30,13 @@ class User:
     locked_until: Optional[datetime] = None
     role: str = UserRole.USER  # Rol del usuario (user/admin/auditor)
     requires_password_reset: bool = False  # Si debe cambiar contraseña
+    backup_code_hash: Optional[str] = None  # Hash del código de respaldo para fallback biométrico
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    
+    def has_backup_code(self) -> bool:
+        """Verifica si el usuario tiene un código de respaldo configurado"""
+        return self.backup_code_hash is not None
     
     def is_locked(self) -> bool:
         """Verifica si la cuenta está bloqueada"""

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Camera } from './Camera';
 import { Button } from './ui/Button';
 import { faceApi } from '@/services/api';
@@ -28,6 +28,33 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
     const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'locked'>('idle');
     const [message, setMessage] = useState<string>('');
     const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Cargar intentos reales del backend al montar el componente
+    useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const statusData = await faceApi.getStatus();
+                if (statusData.remaining_attempts !== undefined) {
+                    setRemainingAttempts(statusData.remaining_attempts);
+                }
+                if (statusData.is_locked) {
+                    setStatus('locked');
+                }
+            } catch (error) {
+                console.error('Error fetching face status:', error);
+                // Mantener valor por defecto si falla
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (mode === 'verify') {
+            fetchStatus();
+        } else {
+            setIsLoading(false);
+        }
+    }, [mode]);
 
     const translateError = (msg: string): string => {
         // Translate technical errors to user-friendly messages
@@ -188,8 +215,8 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 </div>
             )}
 
-            {/* Remaining attempts indicator */}
-            {mode === 'verify' && status !== 'locked' && status !== 'success' && (
+            {/* Remaining attempts indicator - only show after loading */}
+            {!isLoading && mode === 'verify' && status !== 'locked' && status !== 'success' && (
                 <div className={`mb-6 p-4 rounded-lg ${remainingAttempts <= 1
                     ? 'bg-red-500/10 border border-red-500/20'
                     : remainingAttempts === 2
@@ -298,8 +325,19 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 </div>
             )}
 
-            {/* Camera */}
-            {!isProcessing && status !== 'success' && status !== 'locked' && remainingAttempts > 0 && (
+            {/* Loading state */}
+            {isLoading && mode === 'verify' && (
+                <div className="flex flex-col items-center justify-center py-12">
+                    <div className="relative">
+                        <div className="w-16 h-16 border-4 border-violet-500/30 rounded-full" />
+                        <div className="absolute inset-0 w-16 h-16 border-4 border-t-violet-500 rounded-full animate-spin" />
+                    </div>
+                    <p className="mt-4 text-gray-400 text-sm">Cargando estado...</p>
+                </div>
+            )}
+
+            {/* Camera - only show after loading completes */}
+            {!isLoading && !isProcessing && status !== 'success' && status !== 'locked' && remainingAttempts > 0 && (
                 <Camera onCapture={handleCapture} onError={handleCameraError} />
             )}
 

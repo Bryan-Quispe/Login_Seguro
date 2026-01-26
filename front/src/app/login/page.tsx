@@ -56,6 +56,14 @@ export default function LoginPage() {
             const authData = sessionStorage.getItem('authResponse');
             if (authData) {
                 const parsed = JSON.parse(authData);
+
+                // PRIMERO: Verificar si requiere cambio de contraseña
+                if (parsed.requires_password_reset) {
+                    router.push('/change-password');
+                    return;
+                }
+
+                // SEGUNDO: Verificar estado del rostro
                 if (parsed.requires_face_registration) {
                     router.push('/face-register');
                 } else if (parsed.requires_face_verification) {
@@ -197,14 +205,8 @@ export default function LoginPage() {
                                 Continuar
                             </Button>
 
-                            <p className="mt-6 text-center text-sm text-gray-400">
-                                ¿No tiene una cuenta?{' '}
-                                <Link
-                                    href="/register"
-                                    className="text-violet-400 hover:text-violet-300 font-medium transition-colors"
-                                >
-                                    Regístrese aquí
-                                </Link>
+                            <p className="mt-6 text-center text-sm text-gray-500">
+                                Contacte al administrador si no tiene cuenta
                             </p>
                         </CardFooter>
                     </form>

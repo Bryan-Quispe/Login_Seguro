@@ -73,7 +73,42 @@ export const authApi = {
     },
 
     logout: () => {
+        // === LIMPIEZA COMPLETA DE SESIÓN SEGURO ===
+
+        // 1. Eliminar token principal
         Cookies.remove('access_token');
+        Cookies.remove('admin_token');  // Si existe para admin
+
+        // 2. Limpiar sessionStorage completamente
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+            sessionStorage.removeItem('authResponse');
+            sessionStorage.clear();  // Limpieza completa
+        }
+
+        // 3. Limpiar localStorage de datos de sesión (mantener preferencias de usuario)
+        if (typeof window !== 'undefined' && window.localStorage) {
+            // Preservar solo configuraciones no sensibles
+            const themePreference = localStorage.getItem('theme');
+
+            // Limpiar datos sensibles específicos
+            localStorage.removeItem('admin_device_token_v1');
+
+            // Nota: No hacer clear() para preservar preferencias del usuario
+            // Solo limpiar datos de autenticación
+        }
+
+        // 4. Limpiar caché de la aplicación si es posible
+        if (typeof window !== 'undefined' && 'caches' in window) {
+            caches.keys().then(names => {
+                names.forEach(name => {
+                    if (name.includes('auth') || name.includes('user')) {
+                        caches.delete(name);
+                    }
+                });
+            });
+        }
+
+        // 5. Redirigir al login
         if (typeof window !== 'undefined') {
             window.location.href = '/login';
         }
@@ -97,8 +132,20 @@ export const faceApi = {
         return response.data;
     },
 
-    getStatus: async (): Promise<{ user_id: number; face_registered: boolean }> => {
+    getStatus: async (): Promise<{
+        user_id: number;
+        face_registered: boolean;
+        remaining_attempts?: number;
+        is_locked?: boolean;
+        failed_attempts?: number;
+        has_backup_code?: boolean;
+    }> => {
         const response = await api.get('/api/face/status');
+        return response.data;
+    },
+
+    verifyBackupCode: async (code: string): Promise<MessageResponse> => {
+        const response = await api.post<MessageResponse>('/api/face/backup-code/verify', { code });
         return response.data;
     },
 };

@@ -46,6 +46,12 @@ export default function AuditPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    // Estado para código de respaldo del auditor
+    const [backupCode, setBackupCode] = useState<string | null>(null);
+    const [generatingCode, setGeneratingCode] = useState(false);
+    const [hasExistingBackupCode, setHasExistingBackupCode] = useState<boolean>(false);
 
     useEffect(() => {
         checkDeviceAuthorization();
@@ -60,6 +66,7 @@ export default function AuditPage() {
             if (token) {
                 setIsAuthenticated(true);
                 fetchLogs(token, 1);
+                fetchBackupCodeStatus(token);
             } else {
                 router.push('/login');
             }
@@ -79,6 +86,21 @@ export default function AuditPage() {
             setShowDeviceSetup(false);
         } else {
             setError('Token de dispositivo inválido');
+        }
+    };
+
+    // Obtener estado del código de respaldo
+    const fetchBackupCodeStatus = async (token: string) => {
+        try {
+            const response = await fetch(`${API_URL}/api/face/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (data.has_backup_code !== undefined) {
+                setHasExistingBackupCode(data.has_backup_code);
+            }
+        } catch (error) {
+            console.error('Error fetching backup code status:', error);
         }
     };
 
@@ -120,6 +142,36 @@ export default function AuditPage() {
         setIsAuthenticated(false);
         setLogs([]);
         router.push('/login');
+    };
+
+    // Generar código de respaldo para el auditor
+    const handleGenerateBackupCode = async () => {
+        const token = Cookies.get('access_token');
+        if (!token) return;
+
+        setGeneratingCode(true);
+        setSuccess('');
+        setError('');
+
+        try {
+            const response = await fetch(`${API_URL}/api/face/backup-code/generate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (data.success && data.backup_code) {
+                setBackupCode(data.backup_code);
+                setHasExistingBackupCode(true);
+                setSuccess('¡Código de respaldo generado!');
+            } else {
+                setError(data.message || 'Error al generar código');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setGeneratingCode(false);
+        }
     };
 
     const formatDate = (isoString: string) => {
@@ -223,7 +275,16 @@ export default function AuditPage() {
                                     </Button>
                                 </div>
                             ) : (
-                                <p>Validando credenciales de auditor...</p>
+                                <div>
+                                    <p>Validando credenciales de auditor...</p>
+                                    <Button
+                                        className="mt-4 w-full"
+                                        variant="secondary"
+                                        onClick={() => router.push('/login')}
+                                    >
+                                        Ir al Login Ahora
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     </CardContent>
@@ -245,6 +306,37 @@ export default function AuditPage() {
                     <Button variant="secondary" onClick={handleLogout}>
                         Cerrar Sesión
                     </Button>
+                </div>
+
+                {/* Código de respaldo del Auditor */}
+                <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            <div>
+                                <span className="text-sm text-amber-400 font-medium">Código de Respaldo</span>
+                                <p className="text-xs text-gray-500">Para acceder sin verificación facial</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {backupCode && (
+                                <code className="bg-gray-800 px-3 py-1 rounded font-mono text-green-400 text-sm">
+                                    {backupCode}
+                                </code>
+                            )}
+                            <Button
+                                variant="secondary"
+                                className="text-xs py-1 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
+                                onClick={handleGenerateBackupCode}
+                                isLoading={generatingCode}
+                            >
+                                {backupCode ? 'Regenerar' : 'Generar'} Código
+                            </Button>
+                        </div>
+                    </div>
+                    {success && <p className="mt-2 text-xs text-green-400">{success}</p>}
                 </div>
 
                 {/* Stats */}

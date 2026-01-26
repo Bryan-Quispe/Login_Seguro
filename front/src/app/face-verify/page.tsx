@@ -1,12 +1,18 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/components';
+import Cookies from 'js-cookie';
+import { Card, CardContent, Button } from '@/components';
 import { FaceCapture } from '@/components/FaceCapture';
+import BackupCodeModal from '@/components/BackupCodeModal';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function FaceVerifyPage() {
     const router = useRouter();
+    const [showBackupModal, setShowBackupModal] = useState(false);
+    const [failedAttempts, setFailedAttempts] = useState(0);
 
     const handleSuccess = (role?: string) => {
         // Redirigir según el rol
@@ -21,6 +27,28 @@ export default function FaceVerifyPage() {
 
     const handleError = (error: string) => {
         console.error('Face verification error:', error);
+        setFailedAttempts(prev => prev + 1);
+    };
+
+    const handleBackupCodeVerify = useCallback(async (code: string) => {
+        // Usar faceApi para verificación, propagará errores al modal
+        return await faceApi.verifyBackupCode(code);
+    }, []);
+
+    const handleBackupSuccess = () => {
+        setShowBackupModal(false);
+        // Obtener rol del token y redirigir
+        const token = Cookies.get('access_token');
+        if (token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                handleSuccess(payload.role);
+            } catch {
+                handleSuccess();
+            }
+        } else {
+            handleSuccess();
+        }
     };
 
     return (
@@ -54,6 +82,39 @@ export default function FaceVerifyPage() {
                             onSuccess={handleSuccess}
                             onError={handleError}
                         />
+
+                        {/* Opción de código de respaldo - siempre visible */}
+                        <div className="mt-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <svg
+                                        className="w-5 h-5 text-amber-400"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                                        />
+                                    </svg>
+                                    <span className="text-sm text-amber-400">
+                                        ¿Problemas con el rostro?
+                                    </span>
+                                </div>
+                                <Button
+                                    variant="secondary"
+                                    className="text-xs py-1 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
+                                    onClick={() => setShowBackupModal(true)}
+                                    aria-label="Usar código de respaldo"
+                                >
+                                    Usar Código de Respaldo
+                                </Button>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -66,6 +127,7 @@ export default function FaceVerifyPage() {
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
+                                aria-hidden="true"
                             >
                                 <path
                                     strokeLinecap="round"
@@ -94,11 +156,23 @@ export default function FaceVerifyPage() {
                                 <span className="px-3 py-1 text-xs rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
                                     Detección de Vivacidad
                                 </span>
+                                <span className="px-3 py-1 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    Código de Respaldo
+                                </span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Modal de código de respaldo */}
+            <BackupCodeModal
+                isOpen={showBackupModal}
+                onClose={() => setShowBackupModal(false)}
+                onVerify={handleBackupCodeVerify}
+                onSuccess={handleBackupSuccess}
+            />
         </div>
     );
 }
+

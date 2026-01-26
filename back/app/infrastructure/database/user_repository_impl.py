@@ -60,6 +60,7 @@ class UserRepositoryImpl(IUserRepository):
                    face_registered, failed_login_attempts, locked_until,
                    COALESCE(role, 'user') as role, 
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   backup_code_hash,
                    created_at, updated_at
             FROM users 
             WHERE id = %s
@@ -84,6 +85,7 @@ class UserRepositoryImpl(IUserRepository):
                    face_registered, failed_login_attempts, locked_until,
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   backup_code_hash,
                    created_at, updated_at
             FROM users 
             WHERE username = %s
@@ -105,6 +107,7 @@ class UserRepositoryImpl(IUserRepository):
                    face_registered, failed_login_attempts, locked_until,
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   backup_code_hash,
                    created_at, updated_at
             FROM users 
             WHERE email = %s
@@ -126,6 +129,7 @@ class UserRepositoryImpl(IUserRepository):
                    face_registered, failed_login_attempts, locked_until,
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   backup_code_hash,
                    created_at, updated_at
             FROM users 
             WHERE locked_until IS NOT NULL AND locked_until > NOW()
@@ -144,6 +148,7 @@ class UserRepositoryImpl(IUserRepository):
                    face_registered, failed_login_attempts, locked_until,
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                   backup_code_hash,
                    created_at, updated_at
             FROM users 
             WHERE COALESCE(role, 'user') != 'admin'
@@ -162,7 +167,8 @@ class UserRepositoryImpl(IUserRepository):
             SET username = %s, email = %s, password_hash = %s,
                 face_encoding = %s, face_registered = %s,
                 failed_login_attempts = %s, locked_until = %s,
-                role = %s, requires_password_reset = %s
+                role = %s, requires_password_reset = %s,
+                backup_code_hash = %s
             WHERE id = %s
             RETURNING updated_at
         """
@@ -178,6 +184,7 @@ class UserRepositoryImpl(IUserRepository):
                 user.locked_until,
                 user.role if hasattr(user, 'role') else 'user',
                 user.requires_password_reset if hasattr(user, 'requires_password_reset') else False,
+                user.backup_code_hash if hasattr(user, 'backup_code_hash') else None,
                 user.id
             ))
             
@@ -283,8 +290,9 @@ class UserRepositoryImpl(IUserRepository):
             locked_until=row[7],
             role=row[8] if len(row) > 8 else 'user',
             requires_password_reset=row[9] if len(row) > 9 else False,
-            created_at=row[10] if len(row) > 10 else None,
-            updated_at=row[11] if len(row) > 11 else None
+            backup_code_hash=row[10] if len(row) > 10 else None,
+            created_at=row[11] if len(row) > 11 else None,
+            updated_at=row[12] if len(row) > 12 else None
         )
     
     def create_admin_if_not_exists(self, email: str, password: str) -> Optional[User]:
@@ -330,3 +338,8 @@ class UserRepositoryImpl(IUserRepository):
         )
         
         return self.create(auditor)
+
+
+def get_user_repository() -> UserRepositoryImpl:
+    """Dependency injection para UserRepository"""
+    return UserRepositoryImpl(get_db())

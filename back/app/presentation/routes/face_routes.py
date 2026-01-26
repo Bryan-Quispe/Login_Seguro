@@ -13,7 +13,8 @@ from ...application.dto.user_dto import (
     MessageResponse
 )
 from ...application.use_cases import RegisterFaceUseCase, VerifyFaceUseCase
-from ...infrastructure.database import UserRepositoryImpl
+from ...infrastructure.database import UserRepositoryImpl, get_user_repository
+from fastapi.responses import JSONResponse
 from ...infrastructure.services import DeepFaceService
 from ..middleware.auth_middleware import jwt_bearer, get_current_user_id
 
@@ -106,6 +107,7 @@ async def face_status(
 ):
     """
     Obtiene el estado del registro facial del usuario.
+    Incluye intentos restantes para sincronizar frontend con backend.
     """
     user_id = get_current_user_id(payload)
     user = user_repo.find_by_id(user_id)
@@ -116,8 +118,115 @@ async def face_status(
             detail="Usuario no encontrado"
         )
     
+    # Calcular intentos restantes (máximo 3)
+    max_attempts = 3
+    remaining_attempts = max(0, max_attempts - user.failed_login_attempts)
+    
     return {
         "user_id": user_id,
         "face_registered": user.face_registered,
-        "requires_registration": not user.face_registered
+        "requires_registration": not user.face_registered,
+        "has_backup_code": user.has_backup_code(),
+        "remaining_attempts": remaining_attempts,
+        "is_locked": user.is_locked(),
+        "failed_attempts": user.failed_login_attempts
     }
+
+
+# ===== ENDPOINTS DE CÓDIGO DE RESPALDO (FALLBACK BIOMÉTRICO) =====
+
+from ...application.use_cases.backup_code_service import get_backup_code_service, BackupCodeService
+from pydantic import BaseModel
+
+
+class BackupCodeRequest(BaseModel):
+    """Request para verificar código de respaldo"""
+    code: str
+
+
+class BackupCodeResponse(BaseModel):
+    """Response con código de respaldo generado"""
+    success: bool
+    message: str
+    backup_code: str | None = None
+
+
+def get_backup_service():
+    return get_backup_code_service()
+
+
+@router.post("/backup-code/generate", response_model=BackupCodeResponse)
+@limiter.limit("3/hour")  # Máximo 3 generaciones por hora para seguridad
+async def generate_backup_code(
+    request: Request,
+    payload: dict = Depends(jwt_bearer),
+    backup_service: BackupCodeService = Depends(get_backup_service)
+):
+    """
+    Genera un nuevo código de respaldo para el usuario.
+    
+    - El código es de un solo uso
+    - Solo se muestra una vez, debe guardarse de forma segura
+    - Invalida cualquier código anterior
+    """
+    user_id = get_current_user_id(payload)
+    
+    code = backup_service.generate_backup_code(user_id)
+    
+    if not code:
+        return BackupCodeResponse(
+            success=False,
+            message="No se pudo generar el código de respaldo"
+        )
+    
+    return BackupCodeResponse(
+        success=True,
+        message="Código de respaldo generado. Guárdelo en un lugar seguro, solo se muestra una vez.",
+        backup_code=code
+    )
+
+
+@router.post("/backup-code/verify", response_model=MessageResponse)
+@limiter.limit("5/minute")  # Mismo límite que verificación facial
+async def verify_backup_code(
+    request: Request,
+    data: BackupCodeRequest,
+    payload: dict = Depends(jwt_bearer),
+    backup_service: BackupCodeService = Depends(get_backup_service),
+    user_repo: UserRepositoryImpl = Depends(get_user_repository)
+):
+    """
+    Verifica un código de respaldo como alternativa a la biometría facial.
+    
+    - Usar cuando falla la verificación facial
+    - El código se invalida después de uso exitoso
+    - Requiere generar un nuevo código después
+    """
+    user_id = get_current_user_id(payload)
+    
+    # Validar código
+    is_valid = backup_service.verify_backup_code(user_id, data.code)
+    
+    if not is_valid:
+        # Obtener estado actualizado del usuario para informar intentos
+        user = user_repo.find_by_id(user_id)
+        max_attempts = 3
+        remaining = max(0, max_attempts - user.failed_login_attempts)
+        
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "success": False, 
+                "message": "Código de respaldo inválido o ya utilizado",
+                "remaining_attempts": remaining,
+                "is_locked": user.is_locked(),
+                "failed_attempts": user.failed_login_attempts
+            }
+        )
+    
+    return MessageResponse(
+        success=True,
+        message="Código verificado correctamente. Acceso concedido.",
+        data={"verified": True, "method": "backup_code"}
+    )
+

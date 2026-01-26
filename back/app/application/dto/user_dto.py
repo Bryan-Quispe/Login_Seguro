@@ -154,6 +154,7 @@ class TokenResponse(BaseModel):
     user: UserResponse
     requires_face_registration: bool = False
     requires_face_verification: bool = False
+    requires_password_reset: bool = False  # Para primer login
 
 
 class MessageResponse(BaseModel):

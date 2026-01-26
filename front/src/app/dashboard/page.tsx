@@ -1,14 +1,46 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
-import { Card, CardContent, Button } from '@/components';
+import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components';
 import { authApi } from '@/services/api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+interface UserProfile {
+    id: number;
+    username: string;
+    email: string | null;
+    role: string;
+    face_registered: boolean;
+    has_backup_code: boolean;
+    created_at: string | null;
+    updated_at: string | null;
+}
 
 export default function DashboardPage() {
     const router = useRouter();
     const [username, setUsername] = useState<string>('Usuario');
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [showProfile, setShowProfile] = useState(false);
+    const [backupCode, setBackupCode] = useState<string | null>(null);
+    const [generatingCode, setGeneratingCode] = useState(false);
+    const [message, setMessage] = useState('');
+
+    const fetchProfile = useCallback(async (token: string) => {
+        try {
+            const response = await fetch(`${API_URL}/api/auth/profile`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (data.success && data.user) {
+                setProfile(data.user);
+            }
+        } catch (error) {
+            console.error('Error fetching profile:', error);
+        }
+    }, []);
 
     useEffect(() => {
         // Check if user is authenticated
@@ -27,10 +59,54 @@ export default function DashboardPage() {
         } catch (e) {
             console.error('Error parsing token:', e);
         }
-    }, [router]);
+
+        // Fetch profile
+        fetchProfile(token);
+    }, [router, fetchProfile]);
 
     const handleLogout = () => {
         authApi.logout();
+    };
+
+    const handleGenerateBackupCode = async () => {
+        const token = Cookies.get('access_token');
+        if (!token) return;
+
+        setGeneratingCode(true);
+        setMessage('');
+
+        try {
+            const response = await fetch(`${API_URL}/api/face/backup-code/generate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (data.success && data.backup_code) {
+                setBackupCode(data.backup_code);
+                setMessage('¡Código generado! Guárdelo en un lugar seguro.');
+                // Actualizar profile
+                fetchProfile(token);
+            } else {
+                setMessage(data.message || 'Error al generar código');
+            }
+        } catch {
+            setMessage('Error de conexión');
+        } finally {
+            setGeneratingCode(false);
+        }
+    };
+
+    const formatDate = (dateString: string | null) => {
+        if (!dateString) return 'No disponible';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('es-ES', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     };
 
     return (
@@ -45,6 +121,7 @@ export default function DashboardPage() {
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
+                                aria-hidden="true"
                             >
                                 <path
                                     strokeLinecap="round"
@@ -60,27 +137,135 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <Button variant="ghost" onClick={handleLogout}>
-                        <svg
-                            className="w-5 h-5 mr-2"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowProfile(!showProfile)}
+                            aria-label="Ver mi perfil"
                         >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                        </svg>
-                        Cerrar Sesión
-                    </Button>
+                            👤 Mi Perfil
+                        </Button>
+                        <Button variant="ghost" onClick={handleLogout} aria-label="Cerrar sesión">
+                            <svg
+                                className="w-5 h-5 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                                />
+                            </svg>
+                            Cerrar Sesión
+                        </Button>
+                    </div>
                 </div>
             </header>
 
             {/* Main content */}
             <main className="max-w-6xl mx-auto">
+                {/* Profile Section - Expandible */}
+                {showProfile && profile && (
+                    <Card className="mb-8 border-violet-500/30">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <span className="text-2xl">👤</span>
+                                Mi Perfil
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Información básica */}
+                                <div className="space-y-4">
+                                    <h4 className="text-lg font-semibold text-white mb-4">Información de la Cuenta</h4>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Usuario</span>
+                                            <span className="text-white font-medium">{profile.username}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Correo</span>
+                                            <span className="text-white">{profile.email || 'No configurado'}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Rol</span>
+                                            <span className={`px-2 py-1 text-xs rounded-full ${profile.role === 'admin' ? 'bg-red-500/20 text-red-400' :
+                                                    profile.role === 'auditor' ? 'bg-purple-500/20 text-purple-400' :
+                                                        'bg-blue-500/20 text-blue-400'
+                                                }`}>
+                                                {profile.role}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Registro facial</span>
+                                            <span className={`px-2 py-1 text-xs rounded-full ${profile.face_registered
+                                                    ? 'bg-green-500/20 text-green-400'
+                                                    : 'bg-yellow-500/20 text-yellow-400'
+                                                }`}>
+                                                {profile.face_registered ? '✓ Configurado' : 'Pendiente'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2">
+                                            <span className="text-gray-400">Fecha de registro</span>
+                                            <span className="text-white text-sm">{formatDate(profile.created_at)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Código de respaldo */}
+                                <div className="space-y-4">
+                                    <h4 className="text-lg font-semibold text-white mb-4">Código de Respaldo</h4>
+                                    <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                                        <p className="text-sm text-gray-400 mb-4">
+                                            El código de respaldo permite acceder cuando falla la verificación facial.
+                                            Es de un solo uso.
+                                        </p>
+
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <span className="text-gray-400">Estado:</span>
+                                            <span className={`px-2 py-1 text-xs rounded-full ${profile.has_backup_code
+                                                    ? 'bg-green-500/20 text-green-400'
+                                                    : 'bg-yellow-500/20 text-yellow-400'
+                                                }`}>
+                                                {profile.has_backup_code ? '✓ Configurado' : 'No configurado'}
+                                            </span>
+                                        </div>
+
+                                        {backupCode && (
+                                            <div className="p-4 mb-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                                                <p className="text-sm text-amber-400 mb-2">
+                                                    ⚠️ Guarde este código, solo se muestra una vez:
+                                                </p>
+                                                <p className="text-2xl font-mono font-bold text-white tracking-widest text-center">
+                                                    {backupCode}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {message && (
+                                            <p className={`text-sm mb-4 ${backupCode ? 'text-green-400' : 'text-red-400'}`}>
+                                                {message}
+                                            </p>
+                                        )}
+
+                                        <Button
+                                            onClick={handleGenerateBackupCode}
+                                            isLoading={generatingCode}
+                                            className="w-full"
+                                            aria-label="Generar código de respaldo"
+                                        >
+                                            {profile.has_backup_code ? '🔄 Regenerar Código' : '🔐 Generar Código'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Welcome card */}
                 <Card className="mb-8">
                     <CardContent className="py-8">
@@ -97,6 +282,7 @@ export default function DashboardPage() {
                                             className="w-3 h-3 text-white"
                                             fill="currentColor"
                                             viewBox="0 0 20 20"
+                                            aria-hidden="true"
                                         >
                                             <path
                                                 fillRule="evenodd"
@@ -145,6 +331,7 @@ export default function DashboardPage() {
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -171,6 +358,7 @@ export default function DashboardPage() {
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -203,6 +391,7 @@ export default function DashboardPage() {
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -251,16 +440,16 @@ export default function DashboardPage() {
                                     icon: '🎟️',
                                 },
                                 {
-                                    title: 'Bloqueo de Cuenta',
-                                    desc: 'Bloqueo temporal después de intentos fallidos',
-                                    icon: '🚫',
+                                    title: 'Código de Respaldo',
+                                    desc: 'Fallback seguro para autenticación biométrica',
+                                    icon: '🔑',
                                 },
                             ].map((feature, index) => (
                                 <div
                                     key={index}
                                     className="flex items-start space-x-4 p-4 rounded-lg bg-gray-800/30 hover:bg-gray-800/50 transition-colors"
                                 >
-                                    <span className="text-2xl">{feature.icon}</span>
+                                    <span className="text-2xl" aria-hidden="true">{feature.icon}</span>
                                     <div>
                                         <p className="font-medium text-white">{feature.title}</p>
                                         <p className="text-sm text-gray-400">{feature.desc}</p>
@@ -274,3 +463,4 @@ export default function DashboardPage() {
         </div>
     );
 }
+
