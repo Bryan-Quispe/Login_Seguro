@@ -22,6 +22,8 @@ interface ApiResponse {
         locked_until?: string;
         remaining_minutes?: number;
         role?: string;
+        similarity?: number;
+        distance?: number;
     };
 }
 
@@ -30,6 +32,7 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'locked'>('idle');
     const [message, setMessage] = useState<string>('');
+    const [detailMessage, setDetailMessage] = useState<string>('');
     const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -119,11 +122,17 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         if (response.data?.account_locked) {
             setStatus('locked');
             setMessage('Su cuenta ha sido bloqueada por seguridad. Redirigiendo al login...');
+            setDetailMessage('');
             handleLocked();
         } else {
             setStatus('error');
             const friendlyMsg = translateError(response.message || 'Error en el procesamiento facial');
             setMessage(friendlyMsg);
+            
+            // Guardar mensaje original del backend como detalle
+            if (response.message && response.message !== friendlyMsg) {
+                setDetailMessage(response.message);
+            }
 
             // Actualizar intentos restantes
             let newAttempts = remainingAttempts;
@@ -139,6 +148,7 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
             if (newAttempts <= 0) {
                 setStatus('locked');
                 setMessage('Se agotaron los intentos. Redirigiendo al login...');
+                setDetailMessage('');
                 handleLocked();
             }
         }
@@ -189,6 +199,7 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         if (remainingAttempts > 0) {
             setStatus('idle');
             setMessage('');
+            setDetailMessage('');
         }
     };
 
@@ -435,7 +446,12 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                         </svg>
                         <div className="flex-1">
                             <p className="text-sm text-red-400 font-medium">{message}</p>
-                            <p className="mt-1 text-xs text-gray-400">
+                            {detailMessage && (
+                                <div className="mt-2 p-2 rounded bg-gray-800/50 border border-gray-700">
+                                    <p className="text-xs text-gray-400 font-mono">{detailMessage}</p>
+                                </div>
+                            )}
+                            <p className="mt-2 text-xs text-gray-400">
                                 Le quedan {remainingAttempts} intento{remainingAttempts !== 1 ? 's' : ''}.
                             </p>
                         </div>

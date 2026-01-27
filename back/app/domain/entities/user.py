@@ -31,6 +31,7 @@ class User:
     role: str = UserRole.USER  # Rol del usuario (user/admin/auditor)
     requires_password_reset: bool = False  # Si debe cambiar contraseña
     backup_code_hash: Optional[str] = None  # Hash del código de respaldo para fallback biométrico
+    backup_code_encrypted: Optional[str] = None  # Código cifrado para visualización
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     

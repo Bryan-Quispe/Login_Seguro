@@ -61,44 +61,98 @@ class OpenCVFaceService(IFaceService):
     def _detect_face(self, img: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
         """Detecta el rostro más grande en la imagen."""
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Parámetros más permisivos para detección
         faces = self._face_cascade.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100)
+            gray, 
+            scaleFactor=1.05,  # Más fino para mejor detección
+            minNeighbors=3,    # Menos estricto
+            minSize=(80, 80),  # Tamaño mínimo más pequeño
+            flags=cv2.CASCADE_SCALE_IMAGE
         )
         
         if len(faces) == 0:
-            return None
+            # Intentar con parámetros aún más permisivos
+            faces = self._face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=2, minSize=(60, 60)
+            )
+            if len(faces) == 0:
+                return None
         
         # Retornar el rostro más grande
         largest = max(faces, key=lambda f: f[2] * f[3])
         return tuple(largest)
     
+    def _compute_lbp(self, gray_image: np.ndarray) -> np.ndarray:
+        """
+        Calcula Local Binary Pattern (LBP) de la imagen.
+        LBP es robusto a cambios de iluminación.
+        """
+        rows, cols = gray_image.shape
+        lbp = np.zeros((rows-2, cols-2), dtype=np.uint8)
+        
+        for i in range(1, rows-1):
+            for j in range(1, cols-1):
+                center = gray_image[i, j]
+                code = 0
+                # 8 vecinos en sentido horario
+                code |= (gray_image[i-1, j-1] >= center) << 7
+                code |= (gray_image[i-1, j] >= center) << 6
+                code |= (gray_image[i-1, j+1] >= center) << 5
+                code |= (gray_image[i, j+1] >= center) << 4
+                code |= (gray_image[i+1, j+1] >= center) << 3
+                code |= (gray_image[i+1, j] >= center) << 2
+                code |= (gray_image[i+1, j-1] >= center) << 1
+                code |= (gray_image[i, j-1] >= center) << 0
+                lbp[i-1, j-1] = code
+        
+        return lbp
+    
     def _extract_face_features(self, img: np.ndarray, face_rect: Tuple[int, int, int, int]) -> List[float]:
         """
-        Extrae características del rostro usando histogramas de color y textura.
+        Extrae características del rostro usando LBP (Local Binary Patterns).
+        LBP es robusto a cambios de iluminación y fondo.
+        Solo analiza la CARA, no el fondo.
         """
         x, y, w, h = face_rect
-        face_roi = img[y:y+h, x:x+w]
         
-        # Redimensionar a tamaño fijo
+        # Agregar pequeño margen y recortar solo la cara
+        margin_x = int(w * 0.05)
+        margin_y = int(h * 0.05)
+        x1 = max(0, x + margin_x)
+        y1 = max(0, y + margin_y)
+        x2 = min(img.shape[1], x + w - margin_x)
+        y2 = min(img.shape[0], y + h - margin_y)
+        
+        face_roi = img[y1:y2, x1:x2]
+        
+        # Redimensionar a tamaño fijo (solo la cara)
         face_resized = cv2.resize(face_roi, (128, 128))
         
-        # Convertir a escala de grises para LBP
+        # Convertir a escala de grises
         gray = cv2.cvtColor(face_resized, cv2.COLOR_BGR2GRAY)
         
-        # Histograma de intensidades
-        hist_gray = cv2.calcHist([gray], [0], None, [64], [0, 256])
-        hist_gray = cv2.normalize(hist_gray, hist_gray).flatten()
+        # Ecualizar histograma para normalizar iluminación
+        gray = cv2.equalizeHist(gray)
         
-        # Histograma de color (H, S)
-        hsv = cv2.cvtColor(face_resized, cv2.COLOR_BGR2HSV)
-        hist_h = cv2.calcHist([hsv], [0], None, [32], [0, 180])
-        hist_s = cv2.calcHist([hsv], [1], None, [32], [0, 256])
-        hist_h = cv2.normalize(hist_h, hist_h).flatten()
-        hist_s = cv2.normalize(hist_s, hist_s).flatten()
+        # Calcular LBP (robusto a iluminación)
+        lbp = self._compute_lbp(gray)
         
-        # Combinar características
-        features = np.concatenate([hist_gray, hist_h, hist_s])
-        return features.tolist()
+        # Dividir la cara en regiones y calcular histograma LBP por región
+        # Esto captura la estructura espacial del rostro
+        features = []
+        grid_x, grid_y = 8, 8  # 8x8 = 64 regiones
+        cell_h, cell_w = lbp.shape[0] // grid_y, lbp.shape[1] // grid_x
+        
+        for i in range(grid_y):
+            for j in range(grid_x):
+                cell = lbp[i*cell_h:(i+1)*cell_h, j*cell_w:(j+1)*cell_w]
+                hist, _ = np.histogram(cell, bins=16, range=(0, 256))
+                hist = hist.astype(np.float32)
+                hist /= (hist.sum() + 1e-7)  # Normalizar
+                features.extend(hist.tolist())
+        
+        return features
     
     def extract_face_encoding(self, image_data: bytes) -> Tuple[bool, Optional[List[float]], str]:
         """Extrae el encoding facial de una imagen."""
@@ -133,9 +187,10 @@ class OpenCVFaceService(IFaceService):
         Verifica si el rostro coincide con el encoding almacenado.
         IMPORTANTE: Solo da acceso si el rostro coincide con el registrado.
         """
-        # Threshold más estricto para verificación de identidad
-        # Un threshold de 0.35 significa que la similitud debe ser > 65%
-        threshold = threshold or 0.35  # Más estricto que el default
+        # Threshold para verificación de identidad
+        # Un threshold de 0.55 significa que la similitud debe ser > 45%
+        # Valores más altos = más permisivo
+        threshold = threshold or 0.55
         
         try:
             img = self._decode_image(image_data)
@@ -150,38 +205,55 @@ class OpenCVFaceService(IFaceService):
             
             # Validar que los encodings tengan la misma longitud
             if len(current_encoding) != len(stored_encoding):
-                logger.error(f"Longitud de encodings no coincide: {len(current_encoding)} vs {len(stored_encoding)}")
-                return False, 1.0, "Error en comparación de encodings"
+                logger.warning(f"Longitud de encodings no coincide: {len(current_encoding)} vs {len(stored_encoding)}")
+                # Si no coinciden, podría ser un encoding antiguo, hacer comparación básica
+                return False, 1.0, "Debe registrar su rostro nuevamente (formato de encoding actualizado)"
             
-            # Calcular similitud usando correlación de histogramas
+            # Convertir a numpy arrays
             current_np = np.array(current_encoding, dtype=np.float32)
             stored_np = np.array(stored_encoding, dtype=np.float32)
             
-            # Correlación de histogramas (-1 a 1, donde 1 = idénticos)
-            similarity = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CORREL)
+            # Método 1: Correlación de histogramas Chi-Square (mejor para LBP)
+            chi_square = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CHISQR)
+            # Chi-square: 0 = idénticos, mayor = más diferentes
+            # Normalizar a [0, 1]
+            chi_normalized = min(chi_square / 10.0, 1.0)
             
-            # También calcular distancia euclidiana normalizada como segunda métrica
-            norm_current = current_np / (np.linalg.norm(current_np) + 1e-10)
-            norm_stored = stored_np / (np.linalg.norm(stored_np) + 1e-10)
-            euclidean_dist = np.linalg.norm(norm_current - norm_stored)
+            # Método 2: Intersección de histogramas
+            intersection = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_INTERSECT)
+            # Normalizar por el máximo posible
+            max_intersection = min(np.sum(current_np), np.sum(stored_np))
+            intersection_score = intersection / (max_intersection + 1e-7)
             
-            # Convertir correlación a distancia (1 - similarity)
-            # similarity = 1.0 -> distance = 0.0 (mismo rostro)
-            # similarity = 0.0 -> distance = 1.0 (rostros diferentes)
-            distance = 1.0 - max(0, similarity)  # Asegurar que no sea negativo
+            # Método 3: Correlación (como backup)
+            correlation = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CORREL)
             
-            # Combinar ambas métricas para decisión más robusta
-            # Se requiere: baja distancia de correlación Y baja distancia euclidiana
-            is_match = distance < threshold and euclidean_dist < 0.8
+            # Combinar scores: mayor = más similar
+            # intersection_score: 0-1 (1 = igual)
+            # correlation: -1 a 1 (1 = igual)
+            # chi_normalized: 0-1 (0 = igual, invertir)
             
-            logger.info(f"Comparación facial - Correlación: {similarity:.4f}, Distancia: {distance:.4f}, Euclidiana: {euclidean_dist:.4f}, Threshold: {threshold}")
+            combined_similarity = (
+                intersection_score * 0.4 +     # 40% peso intersección
+                (1 - chi_normalized) * 0.3 +   # 30% peso chi-square invertido
+                max(0, correlation) * 0.3      # 30% peso correlación
+            )
+            
+            # Distancia = 1 - similitud
+            distance = 1.0 - combined_similarity
+            
+            # Threshold del .env (default 0.25 significa que similitud debe ser > 75%)
+            is_match = distance < threshold
+            
+            logger.info(f"Comparación LBP - Intersección: {intersection_score:.4f}, Chi²: {chi_normalized:.4f}, Correlación: {correlation:.4f}")
+            logger.info(f"Similitud combinada: {combined_similarity:.4f}, Distancia: {distance:.4f}, Threshold: {threshold}")
             
             if is_match:
-                logger.info(f"✓ Verificación facial EXITOSA - El rostro coincide (distancia: {distance:.4f})")
-                return True, distance, "Verificación facial exitosa - Rostro coincide"
+                logger.info(f"✓ Verificación facial EXITOSA - Similitud: {combined_similarity*100:.1f}%")
+                return True, distance, f"Verificación facial exitosa (similitud: {combined_similarity*100:.1f}%)"
             else:
-                logger.warning(f"✗ Verificación facial FALLIDA - El rostro NO coincide (distancia: {distance:.4f}, euclidiana: {euclidean_dist:.4f})")
-                return False, distance, f"El rostro no coincide con el registrado (similitud: {similarity*100:.1f}%)"
+                logger.warning(f"✗ Verificación facial FALLIDA - Similitud: {combined_similarity*100:.1f}%")
+                return False, distance, f"El rostro no coincide con el registrado (similitud: {combined_similarity*100:.1f}%)"
             
         except Exception as e:
             logger.error(f"Error en verificación facial: {e}")

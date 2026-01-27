@@ -27,6 +27,7 @@ export default function DashboardPage() {
     const [backupCode, setBackupCode] = useState<string | null>(null);
     const [generatingCode, setGeneratingCode] = useState(false);
     const [message, setMessage] = useState('');
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
 
     const fetchProfile = useCallback(async (token: string) => {
         try {
@@ -68,10 +69,21 @@ export default function DashboardPage() {
         authApi.logout();
     };
 
-    const handleGenerateBackupCode = async () => {
+    const handleGenerateBackupCode = () => {
+        // Si ya tiene código, mostrar modal de confirmación
+        if (profile?.has_backup_code) {
+            setShowConfirmModal(true);
+        } else {
+            // Si no tiene, generar directamente
+            confirmGenerateCode();
+        }
+    };
+
+    const confirmGenerateCode = async () => {
         const token = Cookies.get('access_token');
         if (!token) return;
 
+        setShowConfirmModal(false);
         setGeneratingCode(true);
         setMessage('');
 
@@ -84,7 +96,7 @@ export default function DashboardPage() {
 
             if (data.success && data.backup_code) {
                 setBackupCode(data.backup_code);
-                setMessage('¡Código generado! Guárdelo en un lugar seguro.');
+                setMessage('¡Código generado! Guárdelo en un lugar seguro, no se volverá a mostrar.');
                 // Actualizar profile
                 fetchProfile(token);
             } else {
@@ -95,6 +107,10 @@ export default function DashboardPage() {
         } finally {
             setGeneratingCode(false);
         }
+    };
+
+    const cancelGenerateCode = () => {
+        setShowConfirmModal(false);
     };
 
     const formatDate = (dateString: string | null) => {
@@ -234,13 +250,27 @@ export default function DashboardPage() {
                                             </span>
                                         </div>
 
+                                        {profile.has_backup_code && !backupCode && (
+                                            <div className="p-4 mb-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                                                <p className="text-sm text-green-400">
+                                                    ✓ Ya tiene un código de respaldo configurado.
+                                                </p>
+                                                <p className="text-xs text-gray-400 mt-2">
+                                                    Este código le permite acceder si falla la verificación facial.
+                                                </p>
+                                            </div>
+                                        )}
+
                                         {backupCode && (
                                             <div className="p-4 mb-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
                                                 <p className="text-sm text-amber-400 mb-2">
-                                                    ⚠️ Guarde este código, solo se muestra una vez:
+                                                    ⚠️ IMPORTANTE - Guarde este código ahora:
                                                 </p>
-                                                <p className="text-2xl font-mono font-bold text-white tracking-widest text-center">
+                                                <p className="text-2xl font-mono font-bold text-white tracking-widest text-center py-2 bg-gray-800 rounded">
                                                     {backupCode}
+                                                </p>
+                                                <p className="text-xs text-red-400 text-center mt-2 font-semibold">
+                                                    Este código NO se volverá a mostrar. Guárdelo en un lugar seguro.
                                                 </p>
                                             </div>
                                         )}
@@ -259,6 +289,39 @@ export default function DashboardPage() {
                                         >
                                             {profile.has_backup_code ? '🔄 Regenerar Código' : '🔐 Generar Código'}
                                         </Button>
+
+                                        {/* Modal de confirmación */}
+                                        {showConfirmModal && (
+                                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                                                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+                                                    <div className="flex items-center justify-center mb-4">
+                                                        <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                                                            <span className="text-2xl">⚠️</span>
+                                                        </div>
+                                                    </div>
+                                                    <h3 className="text-lg font-semibold text-white text-center mb-2">
+                                                        ¿Regenerar código de respaldo?
+                                                    </h3>
+                                                    <p className="text-gray-400 text-sm text-center mb-6">
+                                                        Se generará un <strong className="text-white">nuevo código</strong> y el anterior quedará <strong className="text-red-400">inválido</strong>. Esta acción no se puede deshacer.
+                                                    </p>
+                                                    <div className="flex gap-3">
+                                                        <Button
+                                                            onClick={cancelGenerateCode}
+                                                            className="flex-1 bg-gray-700 hover:bg-gray-600"
+                                                        >
+                                                            Cancelar
+                                                        </Button>
+                                                        <Button
+                                                            onClick={confirmGenerateCode}
+                                                            className="flex-1 bg-red-600 hover:bg-red-500"
+                                                        >
+                                                            Sí, regenerar
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

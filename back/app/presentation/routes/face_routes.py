@@ -182,6 +182,33 @@ def get_backup_service():
     return get_backup_code_service()
 
 
+@router.get("/backup-code", response_model=BackupCodeResponse)
+async def get_backup_code(
+    request: Request,
+    payload: dict = Depends(jwt_bearer),
+    backup_service: BackupCodeService = Depends(get_backup_service)
+):
+    """
+    Obtiene el código de respaldo existente del usuario.
+    Si ya tiene un código generado, lo retorna.
+    """
+    user_id = get_current_user_id(payload)
+    
+    code = backup_service.get_existing_code(user_id)
+    
+    if code:
+        return BackupCodeResponse(
+            success=True,
+            message="Código de respaldo existente",
+            backup_code=code
+        )
+    
+    return BackupCodeResponse(
+        success=False,
+        message="No tiene un código de respaldo generado"
+    )
+
+
 @router.post("/backup-code/generate", response_model=BackupCodeResponse)
 @limiter.limit("3/hour")  # Máximo 3 generaciones por hora para seguridad
 async def generate_backup_code(

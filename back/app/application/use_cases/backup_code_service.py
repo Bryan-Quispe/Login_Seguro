@@ -2,15 +2,33 @@
 Login Seguro - Caso de Uso: Verificar Código de Respaldo
 Permite autenticación alternativa cuando falla la biometría facial
 """
-from typing import Optional
+from typing import Optional, Tuple
 import bcrypt
 import secrets
 import logging
+import base64
+import hashlib
+from cryptography.fernet import Fernet
 
 from ...domain.entities.user import User
 from ...infrastructure.database import UserRepositoryImpl
+from ...config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def get_encryption_key() -> bytes:
+    """Genera una clave de cifrado derivada del JWT_SECRET"""
+    settings = get_settings()
+    # Usar PBKDF2 para derivar una clave segura del JWT_SECRET
+    key = hashlib.pbkdf2_hmac(
+        'sha256',
+        settings.JWT_SECRET_KEY.encode(),
+        b'backup_code_salt',
+        100000
+    )
+    # Fernet requiere una clave de 32 bytes codificada en base64
+    return base64.urlsafe_b64encode(key[:32])
 
 
 class BackupCodeService:
@@ -21,6 +39,7 @@ class BackupCodeService:
     
     def __init__(self, user_repository: UserRepositoryImpl):
         self._user_repo = user_repository
+        self._fernet = Fernet(get_encryption_key())
     
     def generate_backup_code(self, user_id: int) -> Optional[str]:
         """
@@ -44,13 +63,40 @@ class BackupCodeService:
         salt = bcrypt.gensalt(rounds=12)
         code_hash = bcrypt.hashpw(code_bytes, salt).decode('utf-8')
         
-        # Guardar hash en usuario
+        # Cifrar el código para almacenamiento persistente
+        encrypted_code = self._fernet.encrypt(code.encode()).decode('utf-8')
+        
+        # Guardar hash y código cifrado en usuario
         user.backup_code_hash = code_hash
+        user.backup_code_encrypted = encrypted_code
         self._user_repo.update(user)
         
         logger.info(f"Código de respaldo generado para usuario: {user.username}")
         
         return code
+    
+    def get_existing_code(self, user_id: int) -> Optional[str]:
+        """
+        Obtiene el código de respaldo existente del usuario.
+        Descifra el código almacenado.
+        
+        Returns:
+            str: Código de respaldo o None si no existe
+        """
+        user = self._user_repo.find_by_id(user_id)
+        if not user:
+            return None
+        
+        if not user.backup_code_encrypted:
+            return None
+        
+        try:
+            # Descifrar el código
+            decrypted = self._fernet.decrypt(user.backup_code_encrypted.encode())
+            return decrypted.decode('utf-8')
+        except Exception as e:
+            logger.error(f"Error descifrando código de respaldo: {e}")
+            return None
     
     def verify_backup_code(self, user_id: int, code: str) -> bool:
         """
@@ -93,6 +139,7 @@ class BackupCodeService:
         if is_valid:
             # Invalidar código después de uso exitoso
             user.backup_code_hash = None
+            user.backup_code_encrypted = None  # También limpiar el cifrado
             
             # Resetear intentos fallidos SOLO si es exitoso
             user.failed_login_attempts = 0

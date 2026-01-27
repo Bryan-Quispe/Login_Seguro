@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     face_encoding TEXT,  -- JSON con el encoding facial (128 dimensiones)
     face_registered BOOLEAN DEFAULT FALSE,
     backup_code_hash VARCHAR(255),  -- Hash bcrypt del código de respaldo
+    backup_code_encrypted VARCHAR(255),  -- Código cifrado para visualización
     backup_code_used BOOLEAN DEFAULT FALSE,
     backup_code_generated_at TIMESTAMP,
     requires_password_reset BOOLEAN DEFAULT FALSE,  -- Requiere cambio de contraseña
