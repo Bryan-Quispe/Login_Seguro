@@ -40,16 +40,27 @@ npx next dev -p 3001
 ## 🧠 Sistema de Reconocimiento Facial
 
 ### Librería Utilizada
-**OpenCV (cv2)** con clasificadores Haar Cascade para detección de rostros.
+**OpenCV (cv2)** con clasificadores Haar Cascade para detección de rostros y **LBP (Local Binary Patterns)** para extracción de características.
 
 ### ¿Cómo funciona?
 
 1. **Detección:** Se usa `haarcascade_frontalface_default.xml` para localizar el rostro
-2. **Extracción de características:** Se generan 128 valores numéricos basados en:
-   - Histograma de intensidades (escala de grises)
-   - Histogramas de color (H y S del espacio HSV)
-3. **Almacenamiento:** El encoding se serializa a JSON y se guarda en la columna `face_encoding` de PostgreSQL
-4. **Comparación:** Al verificar, se calcula la correlación de histogramas entre el encoding guardado y el actual
+2. **Preprocesamiento:** Ecualización de histograma para normalizar iluminación
+3. **Extracción de características (LBP):**
+   - Se calcula el patrón binario local de cada píxel comparando con sus 8 vecinos
+   - Se divide el rostro en una grilla de 8x8 celdas
+   - Se genera un histograma de 16 bins por cada celda
+   - Resultado: Vector de 1024 características (64 celdas × 16 bins)
+4. **Almacenamiento:** El encoding se serializa a JSON y se guarda en la columna `face_encoding` de PostgreSQL
+5. **Comparación:** Al verificar, se usan múltiples métricas:
+   - Intersección de histogramas (40%)
+   - Chi-Square (30%)
+   - Correlación (30%)
+
+### Ventajas de LBP
+- **Invariante a cambios de iluminación** - funciona mejor con diferentes condiciones de luz
+- **Robusto a cambios de fondo** - se enfoca en patrones de textura facial
+- **Eficiente computacionalmente** - no requiere GPU
 
 ### Anti-Spoofing
 - **Técnica:** Análisis de varianza Laplaciana
@@ -58,9 +69,11 @@ npx next dev -p 3001
 
 ### Código de Respaldo
 - **Fallback seguro** cuando la verificación facial falla
-- Código alfanumérico de 8 caracteres (un solo uso)
+- Código alfanumérico de 8 caracteres (**un solo uso**)
 - Hash bcrypt almacenado en base de datos
-- Rate limit: 3 generaciones por hora
+- Código cifrado con Fernet (AES-128) para visualización
+- **Importante:** Después de usar el código, se invalida automáticamente
+- Rate limit: 3 generaciones por hora por usuario
 
 ---
 
@@ -180,7 +193,8 @@ Los reportes se generan en:
 | HTTPS | Requerido en producción |
 | Cookies Seguras | `secure=true, sameSite=strict` |
 | Logout Seguro | Limpieza completa de sesión |
-| Código de Respaldo | Fallback para biometría |
+| Código de Respaldo | Fallback cifrado para biometría (un solo uso) |
+| Cifrado de Códigos | Fernet (AES-128) derivado de JWT_SECRET |
 
 ---
 
@@ -209,8 +223,9 @@ Los reportes se generan en:
 - `POST /api/face/register` - Registrar rostro (requiere JWT)
 - `POST /api/face/verify` - Verificar rostro (requiere JWT)
 - `GET /api/face/status` - Estado del registro facial
+- `GET /api/face/backup-code` - Obtener estado del código de respaldo
 - `POST /api/face/backup-code/generate` - Generar código de respaldo
-- `POST /api/face/backup-code/verify` - Verificar código de respaldo
+- `POST /api/face/backup-code/verify` - Verificar código de respaldo (lo invalida)
 
 ### Administrador
 - `GET /api/admin/users` - Listar todos los usuarios
@@ -230,7 +245,7 @@ Los reportes se generan en:
 
 ## 🛠️ Tecnologías
 
-**Backend:** FastAPI, OpenCV, PostgreSQL/Supabase, Bcrypt, JWT, SlowAPI  
+**Backend:** FastAPI, OpenCV (LBP), PostgreSQL/Docker, Bcrypt, JWT, SlowAPI, Cryptography (Fernet)  
 **Frontend:** Next.js 15, TypeScript, Tailwind CSS, React Webcam  
 **Seguridad:** Bandit (Python), ESLint Security (TypeScript)
 
