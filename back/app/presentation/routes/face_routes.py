@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import logging
+import jwt
 
 from ...application.dto.user_dto import (
     FaceRegisterRequest,
@@ -17,14 +18,40 @@ from ...infrastructure.database import UserRepositoryImpl, get_user_repository
 from fastapi.responses import JSONResponse
 from ...infrastructure.services import DeepFaceService
 from ..middleware.auth_middleware import jwt_bearer, get_current_user_id
+from ...config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 # Router
 router = APIRouter(prefix="/api/face", tags=["Biometría Facial"])
 
-# Rate limiting
-limiter = Limiter(key_func=get_remote_address)
+
+def get_user_id_from_request(request: Request) -> str:
+    """
+    Extrae el user_id del token JWT para rate limiting por usuario.
+    Fallback a IP si no hay token válido.
+    """
+    try:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            settings = get_settings()
+            payload = jwt.decode(
+                token, 
+                settings.JWT_SECRET_KEY, 
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            user_id = payload.get("sub")
+            if user_id:
+                return f"user_{user_id}"
+    except Exception:
+        pass
+    # Fallback a IP si no hay token
+    return get_remote_address(request)
+
+
+# Rate limiting por usuario (no por IP)
+limiter = Limiter(key_func=get_user_id_from_request)
 
 
 def get_user_repository():

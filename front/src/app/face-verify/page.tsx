@@ -1,18 +1,31 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { Card, CardContent, Button } from '@/components';
 import { FaceCapture } from '@/components/FaceCapture';
 import BackupCodeModal from '@/components/BackupCodeModal';
+import { faceApi } from '@/services/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function FaceVerifyPage() {
     const router = useRouter();
     const [showBackupModal, setShowBackupModal] = useState(false);
-    const [failedAttempts, setFailedAttempts] = useState(0);
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Verificar autenticación al cargar
+    useEffect(() => {
+        const token = Cookies.get('access_token');
+        if (!token) {
+            router.push('/login');
+            return;
+        }
+        setIsAuthorized(true);
+        setIsLoading(false);
+    }, [router]);
 
     const handleSuccess = (role?: string) => {
         // Redirigir según el rol
@@ -27,17 +40,22 @@ export default function FaceVerifyPage() {
 
     const handleError = (error: string) => {
         console.error('Face verification error:', error);
-        setFailedAttempts(prev => prev + 1);
     };
 
+    // Callback cuando se agotan los intentos o cuenta bloqueada
+    const handleLocked = useCallback(() => {
+        // Limpiar sesión y redirigir al login
+        Cookies.remove('access_token');
+        sessionStorage.clear();
+        router.push('/login');
+    }, [router]);
+
     const handleBackupCodeVerify = useCallback(async (code: string) => {
-        // Usar faceApi para verificación, propagará errores al modal
         return await faceApi.verifyBackupCode(code);
     }, []);
 
     const handleBackupSuccess = () => {
         setShowBackupModal(false);
-        // Obtener rol del token y redirigir
         const token = Cookies.get('access_token');
         if (token) {
             try {
@@ -50,6 +68,20 @@ export default function FaceVerifyPage() {
             handleSuccess();
         }
     };
+
+    // Mostrar loading mientras verifica autenticación
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-500"></div>
+            </div>
+        );
+    }
+
+    // Si no está autorizado, no mostrar nada (se redirige)
+    if (!isAuthorized) {
+        return null;
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4">

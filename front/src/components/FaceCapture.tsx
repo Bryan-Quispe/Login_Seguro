@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Cookies from 'js-cookie';
 import { Camera } from './Camera';
 import { Button } from './ui/Button';
 import { faceApi } from '@/services/api';
@@ -24,11 +26,21 @@ interface ApiResponse {
 }
 
 export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
+    const router = useRouter();
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'locked'>('idle');
     const [message, setMessage] = useState<string>('');
     const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Función para redirigir al login cuando se bloquea o agotan intentos
+    const handleLocked = useCallback(() => {
+        Cookies.remove('access_token');
+        sessionStorage.clear();
+        setTimeout(() => {
+            router.push('/login');
+        }, 2000); // Esperar 2 segundos para mostrar mensaje
+    }, [router]);
 
     // Cargar intentos reales del backend al montar el componente
     useEffect(() => {
@@ -40,10 +52,11 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 }
                 if (statusData.is_locked) {
                     setStatus('locked');
+                    setMessage('Su cuenta está bloqueada. Redirigiendo al login...');
+                    handleLocked();
                 }
             } catch (error) {
                 console.error('Error fetching face status:', error);
-                // Mantener valor por defecto si falla
             } finally {
                 setIsLoading(false);
             }
@@ -54,7 +67,7 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         } else {
             setIsLoading(false);
         }
-    }, [mode]);
+    }, [mode, handleLocked]);
 
     const translateError = (msg: string): string => {
         // Translate technical errors to user-friendly messages
@@ -105,17 +118,28 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         // Check if account is locked
         if (response.data?.account_locked) {
             setStatus('locked');
-            setMessage('Su cuenta ha sido bloqueada por seguridad.');
+            setMessage('Su cuenta ha sido bloqueada por seguridad. Redirigiendo al login...');
+            handleLocked();
         } else {
             setStatus('error');
             const friendlyMsg = translateError(response.message || 'Error en el procesamiento facial');
             setMessage(friendlyMsg);
 
+            // Actualizar intentos restantes
+            let newAttempts = remainingAttempts;
             if (response.data?.remaining_attempts !== undefined) {
-                setRemainingAttempts(response.data.remaining_attempts);
+                newAttempts = response.data.remaining_attempts;
+                setRemainingAttempts(newAttempts);
             } else {
-                // Decrement locally if not provided by server
-                setRemainingAttempts(prev => Math.max(0, prev - 1));
+                newAttempts = Math.max(0, remainingAttempts - 1);
+                setRemainingAttempts(newAttempts);
+            }
+
+            // Si se agotaron los intentos, redirigir al login
+            if (newAttempts <= 0) {
+                setStatus('locked');
+                setMessage('Se agotaron los intentos. Redirigiendo al login...');
+                handleLocked();
             }
         }
         if (onError) onError(response.message);
@@ -128,16 +152,28 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         // Check for lockout in error response
         if (errorResponse?.response?.data?.data?.account_locked || errorDetail.includes('bloqueada')) {
             setStatus('locked');
-            setMessage('Su cuenta ha sido bloqueada por seguridad.');
+            setMessage('Su cuenta ha sido bloqueada por seguridad. Redirigiendo al login...');
+            handleLocked();
         } else {
             setStatus('error');
             const friendlyMsg = translateError(errorDetail || 'Error al procesar la imagen. Intente de nuevo.');
             setMessage(friendlyMsg);
 
+            // Actualizar intentos restantes
+            let newAttempts = remainingAttempts;
             if (errorResponse?.response?.data?.data?.remaining_attempts !== undefined) {
-                setRemainingAttempts(errorResponse.response.data.data.remaining_attempts);
+                newAttempts = errorResponse.response.data.data.remaining_attempts;
+                setRemainingAttempts(newAttempts);
             } else {
-                setRemainingAttempts(prev => Math.max(0, prev - 1));
+                newAttempts = Math.max(0, remainingAttempts - 1);
+                setRemainingAttempts(newAttempts);
+            }
+
+            // Si se agotaron los intentos, redirigir al login
+            if (newAttempts <= 0) {
+                setStatus('locked');
+                setMessage('Se agotaron los intentos. Redirigiendo al login...');
+                handleLocked();
             }
         }
         if (onError) onError(errorDetail);

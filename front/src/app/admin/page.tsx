@@ -103,6 +103,22 @@ export default function AdminPage() {
             localStorage.setItem(DEVICE_SECRET_KEY, deviceTokenInput);
             setDeviceAuthorized(true);
             setShowDeviceSetup(false);
+            
+            // Verificar si ya tiene sesión activa
+            const token = Cookies.get('access_token');
+            if (token) {
+                // Ya tiene sesión, cargar datos del admin
+                setIsAuthenticated(true);
+                fetchData(token);
+                fetchBackupCodeStatus(token);
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    if (payload.username) setAdminName(payload.username);
+                } catch { /* ignore */ }
+            } else {
+                // No hay sesión, redirigir a login inmediatamente
+                router.push('/login');
+            }
         } else {
             setError('Token de dispositivo inválido');
         }

@@ -129,8 +129,13 @@ class OpenCVFaceService(IFaceService):
                    image_data: bytes, 
                    stored_encoding: List[float],
                    threshold: float = None) -> Tuple[bool, float, str]:
-        """Verifica si el rostro coincide con el encoding almacenado."""
-        threshold = threshold or self._threshold
+        """
+        Verifica si el rostro coincide con el encoding almacenado.
+        IMPORTANTE: Solo da acceso si el rostro coincide con el registrado.
+        """
+        # Threshold más estricto para verificación de identidad
+        # Un threshold de 0.35 significa que la similitud debe ser > 65%
+        threshold = threshold or 0.35  # Más estricto que el default
         
         try:
             img = self._decode_image(image_data)
@@ -140,31 +145,43 @@ class OpenCVFaceService(IFaceService):
             if face_rect is None:
                 return False, 1.0, "No se detectó rostro en la imagen"
             
-            # Extraer características
+            # Extraer características del rostro actual
             current_encoding = self._extract_face_features(img, face_rect)
             
-            # Calcular distancia euclidiana normalizada
-            current_np = np.array(current_encoding)
-            stored_np = np.array(stored_encoding)
+            # Validar que los encodings tengan la misma longitud
+            if len(current_encoding) != len(stored_encoding):
+                logger.error(f"Longitud de encodings no coincide: {len(current_encoding)} vs {len(stored_encoding)}")
+                return False, 1.0, "Error en comparación de encodings"
             
-            # Correlación de histogramas
-            similarity = cv2.compareHist(
-                current_np.astype(np.float32), 
-                stored_np.astype(np.float32), 
-                cv2.HISTCMP_CORREL
-            )
+            # Calcular similitud usando correlación de histogramas
+            current_np = np.array(current_encoding, dtype=np.float32)
+            stored_np = np.array(stored_encoding, dtype=np.float32)
             
-            # Convertir a distancia (1 - similarity)
-            distance = 1 - similarity
+            # Correlación de histogramas (-1 a 1, donde 1 = idénticos)
+            similarity = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CORREL)
             
-            is_match = distance < threshold
+            # También calcular distancia euclidiana normalizada como segunda métrica
+            norm_current = current_np / (np.linalg.norm(current_np) + 1e-10)
+            norm_stored = stored_np / (np.linalg.norm(stored_np) + 1e-10)
+            euclidean_dist = np.linalg.norm(norm_current - norm_stored)
+            
+            # Convertir correlación a distancia (1 - similarity)
+            # similarity = 1.0 -> distance = 0.0 (mismo rostro)
+            # similarity = 0.0 -> distance = 1.0 (rostros diferentes)
+            distance = 1.0 - max(0, similarity)  # Asegurar que no sea negativo
+            
+            # Combinar ambas métricas para decisión más robusta
+            # Se requiere: baja distancia de correlación Y baja distancia euclidiana
+            is_match = distance < threshold and euclidean_dist < 0.8
+            
+            logger.info(f"Comparación facial - Correlación: {similarity:.4f}, Distancia: {distance:.4f}, Euclidiana: {euclidean_dist:.4f}, Threshold: {threshold}")
             
             if is_match:
-                logger.info(f"Verificación facial exitosa (distancia: {distance:.4f})")
-                return True, distance, "Verificación facial exitosa"
+                logger.info(f"✓ Verificación facial EXITOSA - El rostro coincide (distancia: {distance:.4f})")
+                return True, distance, "Verificación facial exitosa - Rostro coincide"
             else:
-                logger.warning(f"Verificación facial fallida (distancia: {distance:.4f})")
-                return False, distance, "El rostro no coincide con el registrado"
+                logger.warning(f"✗ Verificación facial FALLIDA - El rostro NO coincide (distancia: {distance:.4f}, euclidiana: {euclidean_dist:.4f})")
+                return False, distance, f"El rostro no coincide con el registrado (similitud: {similarity*100:.1f}%)"
             
         except Exception as e:
             logger.error(f"Error en verificación facial: {e}")

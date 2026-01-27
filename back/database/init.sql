@@ -10,10 +10,17 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) DEFAULT 'user' NOT NULL,  -- 'user', 'auditor', 'admin'
     face_encoding TEXT,  -- JSON con el encoding facial (128 dimensiones)
     face_registered BOOLEAN DEFAULT FALSE,
+    backup_code_hash VARCHAR(255),  -- Hash bcrypt del código de respaldo
+    backup_code_used BOOLEAN DEFAULT FALSE,
+    backup_code_generated_at TIMESTAMP,
+    requires_password_reset BOOLEAN DEFAULT FALSE,  -- Requiere cambio de contraseña
     failed_login_attempts INTEGER DEFAULT 0,
+    failed_face_attempts INTEGER DEFAULT 0,
     locked_until TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -21,22 +28,35 @@ CREATE TABLE IF NOT EXISTS users (
 -- Índices para búsquedas rápidas
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 
--- Tabla de logs de auditoría para seguridad
+-- Tabla de logs de auditoría para seguridad (acciones administrativas)
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    action VARCHAR(50) NOT NULL,  -- LOGIN_SUCCESS, LOGIN_FAILED, FACE_REGISTERED, etc.
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    details TEXT,
+    action VARCHAR(100) NOT NULL,  -- user_disabled, user_enabled, user_unlocked, admin_login, etc.
+    admin_id INTEGER REFERENCES users(id),  -- ID del admin que realizó la acción
+    admin_username VARCHAR(50),  -- Username del admin
+    target_user_id INTEGER REFERENCES users(id),  -- ID del usuario afectado
+    target_username VARCHAR(50),  -- Username del usuario afectado
+    details TEXT,  -- Detalles adicionales en JSON
+    ip_address VARCHAR(45),  -- IP desde donde se realizó la acción
+    user_agent TEXT,  -- User agent del navegador
+    location_country VARCHAR(100),  -- País detectado
+    location_city VARCHAR(100),  -- Ciudad detectada
+    location_region VARCHAR(100),  -- Región/Estado detectado
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 
--- Tabla de sesiones activas
+-- Nota: La tabla sessions es para almacenar tokens de sesión (opcional, para invalidación manual)
+-- Actualmente el sistema usa JWT stateless, pero esta tabla permite:
+-- 1. Invalidar sesiones específicas
+-- 2. Ver sesiones activas de un usuario
+-- 3. Cerrar todas las sesiones al cambiar contraseña
 CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

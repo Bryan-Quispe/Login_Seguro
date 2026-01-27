@@ -84,6 +84,18 @@ export default function AuditPage() {
             localStorage.setItem(DEVICE_SECRET_KEY, deviceTokenInput);
             setDeviceAuthorized(true);
             setShowDeviceSetup(false);
+            
+            // Verificar si ya tiene sesión activa
+            const token = Cookies.get('access_token');
+            if (token) {
+                // Ya tiene sesión, cargar datos del auditor
+                setIsAuthenticated(true);
+                fetchLogs(token, 1);
+                fetchBackupCodeStatus(token);
+            } else {
+                // No hay sesión, redirigir a login inmediatamente
+                router.push('/login');
+            }
         } else {
             setError('Token de dispositivo inválido');
         }

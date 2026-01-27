@@ -1,21 +1,69 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Cookies from 'js-cookie';
 import { Card, CardContent } from '@/components';
 import { FaceCapture } from '@/components/FaceCapture';
 
 export default function FaceRegisterPage() {
     const router = useRouter();
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const handleSuccess = () => {
-        // Face registered successfully, go to dashboard
-        router.push('/dashboard');
+    // Verificar autenticación al cargar
+    useEffect(() => {
+        const token = Cookies.get('access_token');
+        if (!token) {
+            router.push('/login');
+            return;
+        }
+        setIsAuthorized(true);
+        setIsLoading(false);
+    }, [router]);
+
+    const handleSuccess = (role?: string) => {
+        // Face registered successfully, redirect based on role
+        if (role === 'admin') {
+            router.push('/admin');
+        } else if (role === 'auditor') {
+            router.push('/audit');
+        } else {
+            // Si no viene el rol en la respuesta, intentar obtenerlo del token
+            const token = Cookies.get('access_token');
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    if (payload.role === 'admin') {
+                        router.push('/admin');
+                        return;
+                    } else if (payload.role === 'auditor') {
+                        router.push('/audit');
+                        return;
+                    }
+                } catch { /* ignore parse errors */ }
+            }
+            router.push('/dashboard');
+        }
     };
 
     const handleError = (error: string) => {
         console.error('Face registration error:', error);
     };
+
+    // Mostrar loading mientras verifica autenticación
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-500"></div>
+            </div>
+        );
+    }
+
+    // Si no está autorizado, no mostrar nada (se redirige)
+    if (!isAuthorized) {
+        return null;
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4">

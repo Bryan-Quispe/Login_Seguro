@@ -66,7 +66,8 @@ class RegisterFaceUseCase:
             
             return True, "Rostro registrado exitosamente", {
                 "face_registered": True,
-                "encoding_dimensions": len(encoding)
+                "encoding_dimensions": len(encoding),
+                "role": user.role  # Incluir rol para redirección
             }
             
         except Exception as e:
