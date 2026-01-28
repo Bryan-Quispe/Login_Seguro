@@ -26,6 +26,7 @@ interface Stats {
     total_users: number;
     blocked_users: number;
     users_with_face_registered: number;
+    users_pending_face_registration: number;
     users_pending_password_reset: number;
 }
 
@@ -45,6 +46,8 @@ export default function AdminPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const USERS_PER_PAGE = 10;
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -103,7 +106,7 @@ export default function AdminPage() {
             localStorage.setItem(DEVICE_SECRET_KEY, deviceTokenInput);
             setDeviceAuthorized(true);
             setShowDeviceSetup(false);
-            
+
             // Verificar si ya tiene sesión activa
             const token = Cookies.get('access_token');
             if (token) {
@@ -306,6 +309,7 @@ export default function AdminPage() {
     // Búsqueda de usuarios
     const handleSearch = (query: string) => {
         setSearchQuery(query);
+        setCurrentPage(1); // Reset to first page on search
         if (!query.trim()) {
             setFilteredUsers(users);
         } else {
@@ -316,6 +320,13 @@ export default function AdminPage() {
             setFilteredUsers(filtered);
         }
     };
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE);
+    const paginatedUsers = filteredUsers.slice(
+        (currentPage - 1) * USERS_PER_PAGE,
+        currentPage * USERS_PER_PAGE
+    );
 
     // Crear usuario
     const handleCreateUser = async (e: React.FormEvent) => {
@@ -598,7 +609,7 @@ export default function AdminPage() {
 
                 {/* Stats */}
                 {stats && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
                         <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
                             <p className="text-3xl font-bold text-white">{stats.total_users}</p>
                             <p className="text-gray-400 text-sm">Usuarios totales</p>
@@ -610,6 +621,10 @@ export default function AdminPage() {
                         <div className="bg-green-500/10 rounded-xl p-4 border border-green-500/30">
                             <p className="text-3xl font-bold text-green-400">{stats.users_with_face_registered}</p>
                             <p className="text-gray-400 text-sm">Con rostro registrado</p>
+                        </div>
+                        <div className="bg-orange-500/10 rounded-xl p-4 border border-orange-500/30">
+                            <p className="text-3xl font-bold text-orange-400">{stats.users_pending_face_registration}</p>
+                            <p className="text-gray-400 text-sm">Rostro pendiente</p>
                         </div>
                         <div className="bg-yellow-500/10 rounded-xl p-4 border border-yellow-500/30">
                             <p className="text-3xl font-bold text-yellow-400">{stats.users_pending_password_reset}</p>
@@ -649,7 +664,7 @@ export default function AdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredUsers.map((user) => (
+                                    {paginatedUsers.map((user) => (
                                         <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800/50">
                                             <td className="py-3 px-4 text-white font-medium">{user.username}</td>
                                             <td className="py-3 px-4 text-gray-300">{user.email || '-'}</td>
@@ -730,7 +745,7 @@ export default function AdminPage() {
                                             </td>
                                         </tr>
                                     ))}
-                                    {filteredUsers.length === 0 && (
+                                    {paginatedUsers.length === 0 && (
                                         <tr>
                                             <td colSpan={6} className="py-8 text-center text-gray-400">
                                                 {searchQuery ? 'No se encontraron usuarios' : 'No hay usuarios registrados'}
@@ -740,6 +755,36 @@ export default function AdminPage() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-700">
+                                <p className="text-sm text-gray-400">
+                                    Mostrando {((currentPage - 1) * USERS_PER_PAGE) + 1} - {Math.min(currentPage * USERS_PER_PAGE, filteredUsers.length)} de {filteredUsers.length} usuarios
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        className="text-sm"
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage <= 1}
+                                    >
+                                        ← Anterior
+                                    </Button>
+                                    <span className="py-2 px-4 text-gray-400 text-sm">
+                                        Página {currentPage} de {totalPages}
+                                    </span>
+                                    <Button
+                                        variant="secondary"
+                                        className="text-sm"
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage >= totalPages}
+                                    >
+                                        Siguiente →
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 

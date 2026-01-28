@@ -84,7 +84,7 @@ export default function AuditPage() {
             localStorage.setItem(DEVICE_SECRET_KEY, deviceTokenInput);
             setDeviceAuthorized(true);
             setShowDeviceSetup(false);
-            
+
             // Verificar si ya tiene sesión activa
             const token = Cookies.get('access_token');
             if (token) {
@@ -433,27 +433,32 @@ export default function AuditPage() {
                         </div>
 
                         {/* Pagination */}
-                        {totalLogs > 20 && (
-                            <div className="flex justify-center gap-2 mt-6">
-                                <Button
-                                    variant="secondary"
-                                    className="text-sm"
-                                    onClick={() => fetchLogs(Cookies.get('access_token') || Cookies.get('audit_token') || '', currentPage - 1)}
-                                    disabled={currentPage <= 1}
-                                >
-                                    ← Anterior
-                                </Button>
-                                <span className="py-2 px-4 text-gray-400">
-                                    Página {currentPage} de {Math.ceil(totalLogs / 20)}
-                                </span>
-                                <Button
-                                    variant="secondary"
-                                    className="text-sm"
-                                    onClick={() => fetchLogs(Cookies.get('access_token') || Cookies.get('audit_token') || '', currentPage + 1)}
-                                    disabled={currentPage >= Math.ceil(totalLogs / 20)}
-                                >
-                                    Siguiente →
-                                </Button>
+                        {totalLogs > 0 && (
+                            <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-700">
+                                <p className="text-sm text-gray-400">
+                                    Mostrando {((currentPage - 1) * 20) + 1} - {Math.min(currentPage * 20, totalLogs)} de {totalLogs} registros
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        className="text-sm"
+                                        onClick={() => fetchLogs(Cookies.get('access_token') || Cookies.get('audit_token') || '', currentPage - 1)}
+                                        disabled={currentPage <= 1 || loading}
+                                    >
+                                        ← Anterior
+                                    </Button>
+                                    <span className="py-2 px-4 text-gray-400">
+                                        Página {currentPage} de {Math.ceil(totalLogs / 20)}
+                                    </span>
+                                    <Button
+                                        variant="secondary"
+                                        className="text-sm"
+                                        onClick={() => fetchLogs(Cookies.get('access_token') || Cookies.get('audit_token') || '', currentPage + 1)}
+                                        disabled={currentPage >= Math.ceil(totalLogs / 20) || loading}
+                                    >
+                                        Siguiente →
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
