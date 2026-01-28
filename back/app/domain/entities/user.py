@@ -37,7 +37,7 @@ class User:
     
     def has_backup_code(self) -> bool:
         """Verifica si el usuario tiene un código de respaldo configurado"""
-        return self.backup_code_hash is not None
+        return self.backup_code_hash is not None and self.backup_code_hash != ""
     
     def is_locked(self) -> bool:
         """Verifica si la cuenta está bloqueada"""

@@ -207,6 +207,7 @@ async def admin_stats(
     total_users = len(all_users)
     total_blocked = len(blocked_users)
     users_with_face = sum(1 for u in all_users if u.face_registered)
+    users_pending_face = sum(1 for u in all_users if not u.face_registered)
     users_pending_reset = sum(1 for u in all_users if u.requires_password_reset)
     
     return {
@@ -215,6 +216,7 @@ async def admin_stats(
             "total_users": total_users,
             "blocked_users": total_blocked,
             "users_with_face_registered": users_with_face,
+            "users_pending_face_registration": users_pending_face,
             "users_pending_password_reset": users_pending_reset
         }
     }

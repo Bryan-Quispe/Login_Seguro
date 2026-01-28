@@ -64,22 +64,36 @@ class AuditService:
         
         return "unknown"
     
-    async def get_location_from_ip(self, ip: str) -> dict:
+    async def get_location_from_ip(self, ip: str, is_local_dev: bool = False) -> dict:
         """
         Obtiene ubicación geográfica a partir de la IP.
         Usa API gratuita ip-api.com
+        
+        Args:
+            ip: Dirección IP
+            is_local_dev: Si True, significa que es desarrollo local y se usará ubicación configurada
         """
-        # IPs locales no tienen ubicación
-        if ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10."):
+        # Para desarrollo local, usar ubicación configurada (Quito, Ecuador)
+        # ya que la geolocalización por IP del ISP no es precisa
+        if is_local_dev:
             return {
-                "country": "Local",
-                "city": "Localhost",
-                "region": "Development"
+                "country": "Ecuador",
+                "city": "Sangolquí",
+                "region": "Pichincha"
+            }
+        
+        # IPs locales/privadas no tienen ubicación pública
+        if ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
+            return {
+                "country": "Ecuador",
+                "city": "Sangolquí", 
+                "region": "Pichincha"
             }
         
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"http://ip-api.com/json/{ip}")
+                # Request Spanish results with lang=es
+                response = await client.get(f"http://ip-api.com/json/{ip}?lang=es")
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("status") == "success":
@@ -91,7 +105,8 @@ class AuditService:
         except Exception as e:
             logger.warning(f"Error obteniendo ubicación para IP {ip}: {e}")
         
-        return {"country": "", "city": "", "region": ""}
+        # Fallback a Ecuador si no se puede obtener ubicación
+        return {"country": "Ecuador", "city": "Sangolquí", "region": "Pichincha"}
     
     async def get_public_ip(self) -> str:
         """Obtiene la IP pública del servidor (útil para desarrollo local)"""
@@ -117,21 +132,29 @@ class AuditService:
         """Registra una acción de auditoría"""
         try:
             ip = self.get_real_ip(request)
+            is_local_dev = False
             
             # Si es localhost, intentar obtener IP pública real
             if ip in ["127.0.0.1", "::1", "localhost"]:
                 public_ip = await self.get_public_ip()
                 if public_ip:
                     ip = public_ip
+                    is_local_dev = True  # Marcar como desarrollo local para usar ubicación configurada
             
             user_agent = request.headers.get("User-Agent", "")[:500]
-            location = await self.get_location_from_ip(ip)
+            # Usar ubicación configurada si es desarrollo local
+            location = await self.get_location_from_ip(ip, is_local_dev)
+            
+            # Get Ecuador time (UTC-5)
+            # Remove tzinfo to store as naive timestamp in DB (which reflects the local face value)
+            from zoneinfo import ZoneInfo
+            ec_time = datetime.now(ZoneInfo("America/Guayaquil")).replace(tzinfo=None)
             
             query = """
                 INSERT INTO audit_logs 
                 (action, admin_id, admin_username, target_user_id, target_username, 
-                 details, ip_address, user_agent, location_country, location_city, location_region)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 details, ip_address, user_agent, location_country, location_city, location_region, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
             
@@ -147,7 +170,8 @@ class AuditService:
                     user_agent,
                     location.get("country", ""),
                     location.get("city", ""),
-                    location.get("region", "")
+                    location.get("region", ""),
+                    ec_time
                 ))
                 result = cursor.fetchone()
                 
@@ -168,6 +192,7 @@ class AuditService:
         """Registra un intento fallido (login, verificación facial, etc)"""
         try:
             # Obtener IP y ubicación pero continuar si falla
+            is_local_dev = False
             try:
                 ip = self.get_real_ip(request)
                 
@@ -176,6 +201,7 @@ class AuditService:
                     public_ip = await self.get_public_ip()
                     if public_ip:
                         ip = public_ip
+                        is_local_dev = True  # Marcar como desarrollo local
             except:
                 ip = "unknown"
                 
@@ -185,15 +211,20 @@ class AuditService:
                 user_agent = "unknown"
                 
             try:
-                location = await self.get_location_from_ip(ip) if ip != "unknown" else {}
+                # Usar ubicación configurada si es desarrollo local
+                location = await self.get_location_from_ip(ip, is_local_dev) if ip != "unknown" else {"country": "Ecuador", "city": "Sangolquí", "region": "Pichincha"}
             except:
-                location = {}
+                location = {"country": "Ecuador", "city": "Sangolquí", "region": "Pichincha"}
+            
+            # Get Ecuador time (UTC-5)
+            from zoneinfo import ZoneInfo
+            ec_time = datetime.now(ZoneInfo("America/Guayaquil")).replace(tzinfo=None)
             
             query = """
                 INSERT INTO audit_logs 
                 (action, admin_username, target_username, details, ip_address, user_agent, 
-                 location_country, location_city, location_region)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 location_country, location_city, location_region, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             with self._db.get_cursor() as cursor:
@@ -206,7 +237,8 @@ class AuditService:
                     user_agent,
                     location.get("country", ""),
                     location.get("city", ""),
-                    location.get("region", "")
+                    location.get("region", ""),
+                    ec_time
                 ))
                 return True
                 
