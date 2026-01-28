@@ -1,14 +1,14 @@
 """
-Login Seguro - Servicio de Reconocimiento Facial con OpenCV
-Implementa IFaceService con detección básica de rostro
-Compatible con Python 3.14
+Login Seguro - Servicio de Reconocimiento Facial con OpenCV DNN
+Usa modelos pre-entrenados de deep learning para identificación biométrica real
+- YuNet: Detección facial de alta precisión
+- SFace: Embeddings de 128 dimensiones para reconocimiento
 """
 import base64
-import io
-import json
 import logging
-import hashlib
+import os
 from typing import Tuple, Optional, List
+from pathlib import Path
 
 import numpy as np
 import cv2
@@ -18,26 +18,60 @@ from ...config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Directorio de modelos
+MODELS_DIR = Path(__file__).parent.parent.parent.parent / "models"
 
-class OpenCVFaceService(IFaceService):
+
+class OpenCVDNNFaceService(IFaceService):
     """
-    Implementación del servicio de reconocimiento facial usando OpenCV.
-    Compatible con todas las versiones de Python.
+    Servicio de reconocimiento facial usando modelos de deep learning.
+    - YuNet: Detector facial de alta precisión
+    - SFace: Red neuronal para embeddings faciales de 128 dimensiones
     """
     
     def __init__(self):
         self._settings = get_settings()
         self._threshold = self._settings.FACE_DISTANCE_THRESHOLD
         
-        # Cargar clasificador Haar para detección de rostros
+        # Rutas de modelos
+        yunet_path = MODELS_DIR / "face_detection_yunet.onnx"
+        sface_path = MODELS_DIR / "face_recognition_sface.onnx"
+        
+        # Verificar modelos
+        self._use_dnn = yunet_path.exists() and sface_path.exists()
+        
+        if self._use_dnn:
+            try:
+                # Inicializar detector YuNet
+                self._detector = cv2.FaceDetectorYN.create(
+                    str(yunet_path),
+                    "",
+                    (320, 320),
+                    0.9,  # Score threshold
+                    0.3,  # NMS threshold
+                    5000  # Top K
+                )
+                
+                # Inicializar reconocedor SFace
+                self._recognizer = cv2.FaceRecognizerSF.create(
+                    str(sface_path),
+                    ""
+                )
+                
+                logger.info("✅ Servicio DNN inicializado con YuNet + SFace")
+            except Exception as e:
+                logger.error(f"Error inicializando DNN: {e}")
+                self._use_dnn = False
+        else:
+            logger.warning("⚠️ Modelos DNN no encontrados, usando Haar Cascade")
+        
+        # Fallback: clasificadores Haar
         self._face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
-        
-        logger.info("OpenCV Face Service inicializado")
     
     def _decode_image(self, image_data: bytes) -> np.ndarray:
-        """Decodifica una imagen desde base64."""
+        """Decodifica imagen desde base64."""
         try:
             if isinstance(image_data, str):
                 if ',' in image_data:
@@ -58,99 +92,69 @@ class OpenCVFaceService(IFaceService):
             logger.error(f"Error decodificando imagen: {e}")
             raise ValueError(f"Imagen inválida: {str(e)}")
     
-    def _detect_face(self, img: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
-        """Detecta el rostro más grande en la imagen."""
+    def _detect_face_dnn(self, img: np.ndarray) -> Optional[np.ndarray]:
+        """Detecta rostro usando YuNet (DNN)."""
+        h, w = img.shape[:2]
+        self._detector.setInputSize((w, h))
+        
+        _, faces = self._detector.detect(img)
+        
+        if faces is None or len(faces) == 0:
+            return None
+        
+        # Retornar el rostro con mayor score
+        return faces[0]
+    
+    def _detect_face_haar(self, img: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """Detecta rostro usando Haar Cascade (fallback)."""
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Parámetros más permisivos para detección
         faces = self._face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.05,  # Más fino para mejor detección
-            minNeighbors=3,    # Menos estricto
-            minSize=(80, 80),  # Tamaño mínimo más pequeño
-            flags=cv2.CASCADE_SCALE_IMAGE
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100)
         )
         
         if len(faces) == 0:
-            # Intentar con parámetros aún más permisivos
-            faces = self._face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=2, minSize=(60, 60)
-            )
-            if len(faces) == 0:
-                return None
+            return None
         
-        # Retornar el rostro más grande
         largest = max(faces, key=lambda f: f[2] * f[3])
         return tuple(largest)
     
-    def _compute_lbp(self, gray_image: np.ndarray) -> np.ndarray:
-        """
-        Calcula Local Binary Pattern (LBP) de la imagen.
-        LBP es robusto a cambios de iluminación.
-        """
-        rows, cols = gray_image.shape
-        lbp = np.zeros((rows-2, cols-2), dtype=np.uint8)
+    def _extract_embedding_dnn(self, img: np.ndarray, face: np.ndarray) -> np.ndarray:
+        """Extrae embedding de 128 dimensiones usando SFace."""
+        # Alinear rostro
+        aligned = self._recognizer.alignCrop(img, face)
         
-        for i in range(1, rows-1):
-            for j in range(1, cols-1):
-                center = gray_image[i, j]
-                code = 0
-                # 8 vecinos en sentido horario
-                code |= (gray_image[i-1, j-1] >= center) << 7
-                code |= (gray_image[i-1, j] >= center) << 6
-                code |= (gray_image[i-1, j+1] >= center) << 5
-                code |= (gray_image[i, j+1] >= center) << 4
-                code |= (gray_image[i+1, j+1] >= center) << 3
-                code |= (gray_image[i+1, j] >= center) << 2
-                code |= (gray_image[i+1, j-1] >= center) << 1
-                code |= (gray_image[i, j-1] >= center) << 0
-                lbp[i-1, j-1] = code
+        # Extraer embedding (128 dimensiones)
+        embedding = self._recognizer.feature(aligned)
         
-        return lbp
+        return embedding.flatten()
     
-    def _extract_face_features(self, img: np.ndarray, face_rect: Tuple[int, int, int, int]) -> List[float]:
-        """
-        Extrae características del rostro usando LBP (Local Binary Patterns).
-        LBP es robusto a cambios de iluminación y fondo.
-        Solo analiza la CARA, no el fondo.
-        """
+    def _extract_embedding_fallback(self, img: np.ndarray, face_rect: Tuple[int, int, int, int]) -> List[float]:
+        """Extrae características usando LBP (fallback si no hay DNN)."""
         x, y, w, h = face_rect
+        face_roi = img[y:y+h, x:x+w]
         
-        # Agregar pequeño margen y recortar solo la cara
-        margin_x = int(w * 0.05)
-        margin_y = int(h * 0.05)
-        x1 = max(0, x + margin_x)
-        y1 = max(0, y + margin_y)
-        x2 = min(img.shape[1], x + w - margin_x)
-        y2 = min(img.shape[0], y + h - margin_y)
-        
-        face_roi = img[y1:y2, x1:x2]
-        
-        # Redimensionar a tamaño fijo (solo la cara)
+        # Redimensionar
         face_resized = cv2.resize(face_roi, (128, 128))
-        
-        # Convertir a escala de grises
         gray = cv2.cvtColor(face_resized, cv2.COLOR_BGR2GRAY)
         
-        # Ecualizar histograma para normalizar iluminación
-        gray = cv2.equalizeHist(gray)
+        # CLAHE
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
         
-        # Calcular LBP (robusto a iluminación)
-        lbp = self._compute_lbp(gray)
-        
-        # Dividir la cara en regiones y calcular histograma LBP por región
-        # Esto captura la estructura espacial del rostro
+        # LBP simplificado
         features = []
-        grid_x, grid_y = 8, 8  # 8x8 = 64 regiones
-        cell_h, cell_w = lbp.shape[0] // grid_y, lbp.shape[1] // grid_x
+        rows, cols = gray.shape
         
-        for i in range(grid_y):
-            for j in range(grid_x):
-                cell = lbp[i*cell_h:(i+1)*cell_h, j*cell_w:(j+1)*cell_w]
-                hist, _ = np.histogram(cell, bins=16, range=(0, 256))
-                hist = hist.astype(np.float32)
-                hist /= (hist.sum() + 1e-7)  # Normalizar
-                features.extend(hist.tolist())
+        for i in range(1, rows-1, 4):
+            for j in range(1, cols-1, 4):
+                center = gray[i, j]
+                code = 0
+                code |= (gray[i-1, j] >= center) << 0
+                code |= (gray[i, j+1] >= center) << 1
+                code |= (gray[i+1, j] >= center) << 2
+                code |= (gray[i, j-1] >= center) << 3
+                features.append(code / 15.0)
         
         return features
     
@@ -159,25 +163,35 @@ class OpenCVFaceService(IFaceService):
         try:
             img = self._decode_image(image_data)
             
-            # Detectar rostro
-            face_rect = self._detect_face(img)
-            if face_rect is None:
-                return False, None, "No se detectó ningún rostro en la imagen"
-            
-            # Verificar anti-spoofing básico
-            is_real, confidence, spoof_msg = self.detect_spoofing(image_data)
+            # Anti-spoofing
+            is_real, _, spoof_msg = self.detect_spoofing(image_data)
             if not is_real:
                 return False, None, f"Spoofing detectado: {spoof_msg}"
             
-            # Extraer características
-            encoding = self._extract_face_features(img, face_rect)
+            if self._use_dnn:
+                # Usar modelos DNN
+                face = self._detect_face_dnn(img)
+                if face is None:
+                    return False, None, "No se detectó ningún rostro"
+                
+                embedding = self._extract_embedding_dnn(img, face)
+                encoding = embedding.tolist()
+                
+                logger.info(f"✅ Encoding DNN extraído: {len(encoding)} dimensiones")
+            else:
+                # Fallback a Haar + LBP
+                face_rect = self._detect_face_haar(img)
+                if face_rect is None:
+                    return False, None, "No se detectó ningún rostro"
+                
+                encoding = self._extract_embedding_fallback(img, face_rect)
+                logger.info(f"⚠️ Encoding fallback extraído: {len(encoding)} características")
             
-            logger.info("Encoding facial extraído exitosamente")
             return True, encoding, "Encoding facial extraído correctamente"
             
         except Exception as e:
-            logger.error(f"Error extrayendo encoding facial: {e}")
-            return False, None, f"Error al procesar imagen: {str(e)}"
+            logger.error(f"Error extrayendo encoding: {e}")
+            return False, None, f"Error: {str(e)}"
     
     def verify_face(self, 
                    image_data: bytes, 
@@ -185,164 +199,182 @@ class OpenCVFaceService(IFaceService):
                    threshold: float = None) -> Tuple[bool, float, str]:
         """
         Verifica si el rostro coincide con el encoding almacenado.
-        IMPORTANTE: Solo da acceso si el rostro coincide con el registrado.
+        Usa matching de SFace si está disponible.
         """
-        # Threshold para verificación de identidad
-        # Un threshold de 0.55 significa que la similitud debe ser > 45%
-        # Valores más altos = más permisivo
-        threshold = threshold or 0.55
+        # Threshold para SFace: 0.363 por defecto (cosine)
+        # Más estricto: 0.30 significa 70% similitud
+        threshold = threshold or 0.30
         
         try:
             img = self._decode_image(image_data)
             
-            # Detectar rostro
-            face_rect = self._detect_face(img)
-            if face_rect is None:
-                return False, 1.0, "No se detectó rostro en la imagen"
-            
-            # Extraer características del rostro actual
-            current_encoding = self._extract_face_features(img, face_rect)
-            
-            # Validar que los encodings tengan la misma longitud
-            if len(current_encoding) != len(stored_encoding):
-                logger.warning(f"Longitud de encodings no coincide: {len(current_encoding)} vs {len(stored_encoding)}")
-                # Si no coinciden, podría ser un encoding antiguo, hacer comparación básica
-                return False, 1.0, "Debe registrar su rostro nuevamente (formato de encoding actualizado)"
-            
-            # Convertir a numpy arrays
-            current_np = np.array(current_encoding, dtype=np.float32)
-            stored_np = np.array(stored_encoding, dtype=np.float32)
-            
-            # Método 1: Correlación de histogramas Chi-Square (mejor para LBP)
-            chi_square = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CHISQR)
-            # Chi-square: 0 = idénticos, mayor = más diferentes
-            # Normalizar a [0, 1]
-            chi_normalized = min(chi_square / 10.0, 1.0)
-            
-            # Método 2: Intersección de histogramas
-            intersection = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_INTERSECT)
-            # Normalizar por el máximo posible
-            max_intersection = min(np.sum(current_np), np.sum(stored_np))
-            intersection_score = intersection / (max_intersection + 1e-7)
-            
-            # Método 3: Correlación (como backup)
-            correlation = cv2.compareHist(current_np, stored_np, cv2.HISTCMP_CORREL)
-            
-            # Combinar scores: mayor = más similar
-            # intersection_score: 0-1 (1 = igual)
-            # correlation: -1 a 1 (1 = igual)
-            # chi_normalized: 0-1 (0 = igual, invertir)
-            
-            combined_similarity = (
-                intersection_score * 0.4 +     # 40% peso intersección
-                (1 - chi_normalized) * 0.3 +   # 30% peso chi-square invertido
-                max(0, correlation) * 0.3      # 30% peso correlación
-            )
-            
-            # Distancia = 1 - similitud
-            distance = 1.0 - combined_similarity
-            
-            # Threshold del .env (default 0.25 significa que similitud debe ser > 75%)
-            is_match = distance < threshold
-            
-            logger.info(f"Comparación LBP - Intersección: {intersection_score:.4f}, Chi²: {chi_normalized:.4f}, Correlación: {correlation:.4f}")
-            logger.info(f"Similitud combinada: {combined_similarity:.4f}, Distancia: {distance:.4f}, Threshold: {threshold}")
-            
-            if is_match:
-                logger.info(f"✓ Verificación facial EXITOSA - Similitud: {combined_similarity*100:.1f}%")
-                return True, distance, f"Verificación facial exitosa (similitud: {combined_similarity*100:.1f}%)"
+            if self._use_dnn:
+                # Detectar rostro con YuNet
+                face = self._detect_face_dnn(img)
+                if face is None:
+                    return False, 1.0, "No se detectó rostro"
+                
+                # Extraer embedding actual
+                current_embedding = self._extract_embedding_dnn(img, face)
+                stored_embedding = np.array(stored_encoding, dtype=np.float32)
+                
+                # Verificar compatibilidad
+                if len(current_embedding) != len(stored_embedding):
+                    return False, 1.0, "Registre su rostro nuevamente"
+                
+                # Calcular similitud coseno usando SFace
+                # Reshape para FaceRecognizerSF
+                current_embed_2d = current_embedding.reshape(1, -1)
+                stored_embed_2d = stored_embedding.reshape(1, -1)
+                
+                # Similitud coseno (1.0 = idéntico, 0.0 = diferente)
+                cosine_score = self._recognizer.match(
+                    current_embed_2d, stored_embed_2d, 
+                    cv2.FaceRecognizerSF_FR_COSINE
+                )
+                
+                # Distancia L2 normalizada
+                l2_score = self._recognizer.match(
+                    current_embed_2d, stored_embed_2d,
+                    cv2.FaceRecognizerSF_FR_NORM_L2
+                )
+                
+                # Combinar scores
+                # cosine_score: 0-1 (1 = mejor)
+                # l2_score: 0-2 (0 = mejor, normalizar)
+                l2_similarity = max(0, 1 - l2_score / 2)
+                
+                combined = (cosine_score * 0.7 + l2_similarity * 0.3)
+                distance = 1 - combined
+                
+                logger.info(f"=== VERIFICACIÓN DNN ===")
+                logger.info(f"Coseno: {cosine_score:.4f}, L2: {l2_score:.4f}")
+                logger.info(f"Similitud combinada: {combined*100:.1f}%")
+                
+                # Umbral estricto de similitud
+                MIN_COSINE = 0.35  # Umbral recomendado por SFace
+                
+                if cosine_score < MIN_COSINE:
+                    logger.warning(f"❌ RECHAZADO - Coseno: {cosine_score:.3f} < {MIN_COSINE}")
+                    return False, float(distance), f"Rostro no coincide ({combined*100:.0f}%)"
+                
+                if distance >= threshold:
+                    logger.warning(f"❌ RECHAZADO - Distancia: {distance:.3f}")
+                    return False, float(distance), f"Rostro no coincide ({combined*100:.0f}%)"
+                
+                logger.info(f"✅ VERIFICACIÓN EXITOSA - {combined*100:.1f}%")
+                return True, float(distance), f"Verificación exitosa ({combined*100:.0f}%)"
+                
             else:
-                logger.warning(f"✗ Verificación facial FALLIDA - Similitud: {combined_similarity*100:.1f}%")
-                return False, distance, f"El rostro no coincide con el registrado (similitud: {combined_similarity*100:.1f}%)"
+                # Fallback a LBP
+                face_rect = self._detect_face_haar(img)
+                if face_rect is None:
+                    return False, 1.0, "No se detectó rostro"
+                
+                current = np.array(self._extract_embedding_fallback(img, face_rect))
+                stored = np.array(stored_encoding)
+                
+                if len(current) != len(stored):
+                    return False, 1.0, "Registre su rostro nuevamente"
+                
+                # Similitud coseno
+                norm_c = np.linalg.norm(current)
+                norm_s = np.linalg.norm(stored)
+                
+                if norm_c > 0 and norm_s > 0:
+                    cosine = np.dot(current, stored) / (norm_c * norm_s)
+                else:
+                    cosine = 0.0
+                
+                distance = 1 - cosine
+                
+                if cosine < 0.90:  # 90% mínimo para LBP
+                    return False, float(distance), f"Rostro no coincide ({cosine*100:.0f}%)"
+                
+                return True, float(distance), f"Verificación exitosa ({cosine*100:.0f}%)"
             
         except Exception as e:
-            logger.error(f"Error en verificación facial: {e}")
-            return False, 1.0, f"Error al verificar rostro: {str(e)}"
+            logger.error(f"Error en verificación: {e}")
+            return False, 1.0, f"Error: {str(e)}"
     
     def detect_spoofing(self, image_data: bytes) -> Tuple[bool, float, str]:
-        """
-        Detecta si la imagen es un intento de spoofing usando análisis de textura.
-        Técnica: análisis de varianza de Laplaciano (imágenes planas = fotos de fotos)
-        """
+        """Detecta intentos de spoofing con análisis de textura."""
         try:
             img = self._decode_image(image_data)
             
-            # Detectar rostro primero
-            face_rect = self._detect_face(img)
-            if face_rect is None:
-                return False, 0.0, "No se detectó ningún rostro"
+            if self._use_dnn:
+                face = self._detect_face_dnn(img)
+                if face is None:
+                    return False, 0.0, "No se detectó rostro"
+                
+                x, y, w, h = int(face[0]), int(face[1]), int(face[2]), int(face[3])
+            else:
+                face_rect = self._detect_face_haar(img)
+                if face_rect is None:
+                    return False, 0.0, "No se detectó rostro"
+                x, y, w, h = face_rect
             
-            x, y, w, h = face_rect
-            face_roi = img[y:y+h, x:x+w]
+            # Recortar región facial
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(img.shape[1], x + w)
+            y2 = min(img.shape[0], y + h)
             
-            # Análisis de textura con Laplaciano
+            face_roi = img[y1:y2, x1:x2]
+            
+            if face_roi.size == 0:
+                return False, 0.0, "Región facial inválida"
+            
             gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
             laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
             
-            # Umbral: fotos de fotos tienen menos variación
-            # Valores típicos: pantalla/foto < 50, rostro real > 100
-            texture_score = min(laplacian_var / 200.0, 1.0)
-            
-            # También verificar contraste
+            texture = min(laplacian_var / 200.0, 1.0)
             contrast = gray.std()
             contrast_score = min(contrast / 50.0, 1.0)
             
-            # Score combinado
-            confidence = (texture_score * 0.7) + (contrast_score * 0.3)
+            confidence = float((texture * 0.7) + (contrast_score * 0.3))
             
-            # Umbral de decisión (más permisivo para evitar falsos positivos)
             is_real = laplacian_var > 30 and contrast > 20
             
             if is_real:
-                logger.info(f"Rostro real detectado (laplacian: {laplacian_var:.2f})")
-                return True, confidence, "Rostro real verificado"
+                return True, confidence, "Rostro real"
             else:
-                logger.warning(f"Posible spoofing (laplacian: {laplacian_var:.2f})")
-                return False, confidence, "Se detectó un posible intento de spoofing"
+                return False, confidence, "Posible spoofing"
             
         except Exception as e:
-            logger.error(f"Error en detección de spoofing: {e}")
-            # En caso de error, permitir (evitar bloqueo)
-            return True, 0.5, "No se pudo verificar anti-spoofing"
+            logger.error(f"Error anti-spoofing: {e}")
+            return True, 0.5, "No verificado"
     
     def verify_face_with_antispoofing(self,
                                       image_data: bytes,
                                       stored_encoding: List[float],
                                       threshold: float = None) -> Tuple[bool, dict, str]:
-        """Verificación completa: anti-spoofing + reconocimiento facial."""
+        """Verificación completa: anti-spoofing + reconocimiento."""
         threshold = threshold or self._threshold
         
-        # Paso 1: Verificar anti-spoofing
-        is_real, spoof_confidence, spoof_msg = self.detect_spoofing(image_data)
+        is_real, spoof_conf, spoof_msg = self.detect_spoofing(image_data)
         
         if not is_real:
             return False, {
                 'is_real': False,
-                'spoof_confidence': spoof_confidence,
+                'spoof_confidence': float(spoof_conf),
                 'face_match': False,
                 'distance': 1.0
-            }, f"Acceso denegado: {spoof_msg}"
+            }, f"Denegado: {spoof_msg}"
         
-        # Paso 2: Verificar coincidencia facial
         face_match, distance, face_msg = self.verify_face(
             image_data, stored_encoding, threshold
         )
         
-        details = {
+        return face_match, {
             'is_real': True,
-            'spoof_confidence': spoof_confidence,
+            'spoof_confidence': float(spoof_conf),
             'face_match': face_match,
-            'distance': distance
-        }
-        
-        if face_match:
-            logger.info("Verificación biométrica completa exitosa")
-            return True, details, "Verificación biométrica exitosa"
-        else:
-            logger.warning("Rostro real pero no coincide")
-            return False, details, face_msg
+            'distance': float(distance)
+        }, face_msg
 
 
-# Alias para compatibilidad
-DeepFaceService = OpenCVFaceService
-MediaPipeFaceService = OpenCVFaceService
+# Aliases para compatibilidad
+DeepFaceService = OpenCVDNNFaceService
+OpenCVFaceService = OpenCVDNNFaceService
+MediaPipeFaceService = OpenCVDNNFaceService

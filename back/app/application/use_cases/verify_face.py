@@ -82,11 +82,15 @@ class VerifyFaceUseCase:
                     self._user_repository.update_failed_attempts(user_id, 0, None)
                 
                 logger.info(f"Verificación facial exitosa para user {user_id}")
+                # Convertir valores numpy a float nativo para evitar error de serialización
+                confidence_val = details.get('spoof_confidence', 1.0)
+                distance_val = details.get('distance', 0.0)
+                
                 return True, "Verificación facial exitosa. Acceso concedido.", {
                     "verified": True,
                     "is_real": details.get('is_real', True),
-                    "confidence": details.get('spoof_confidence', 1.0),
-                    "match_distance": details.get('distance', 0.0),
+                    "confidence": float(confidence_val) if hasattr(confidence_val, 'item') else float(confidence_val),
+                    "match_distance": float(distance_val) if hasattr(distance_val, 'item') else float(distance_val),
                     "role": user.role  # Incluir rol para redirección
                 }
             else:
