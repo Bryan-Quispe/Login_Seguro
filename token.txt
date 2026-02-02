@@ -1,0 +1,19 @@
+Panel	Token
+
+
+Admin: BQUISPE-LAPTOP-2024-ADMIN-TOKEN-SECURE
+Auditor: BQUISPE-LAPTOP-2026-AUDITORIA-TOKEN-SECURE
+
+### Credenciales de Administrador
+- **Email:** admin@loginseguro.com
+- **Contraseña:** S@bryromero123
+
+usuario
+8D77BBDC  Garcia
+E6E8C3EE  Mateo
+ 
+admin
+553B6755
+
+audit
+5ABCD736

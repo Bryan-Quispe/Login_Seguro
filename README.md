@@ -1,79 +1,274 @@
 # 🔐 Login Seguro - Sistema de Autenticación Biométrica Facial
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15+-black.svg)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://reactjs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-DNN-green.svg)](https://opencv.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)](https://fastapi.tiangolo.com/)
 
 Sistema de autenticación de dos factores con credenciales + verificación biométrica facial con anti-spoofing y código de respaldo.
 
-## 🚀 Ejecución Rápida
+---
 
-### Requisitos
-- **Python 3.10+**
-- **Node.js 18+**
-- **Base de datos:** Supabase (nube) o Docker (local)
+## 🛠️ Stack Tecnológico Completo
 
-### Pasos
+### Backend
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **Python** | 3.10+ | Lenguaje principal |
+| **FastAPI** | 0.109.0 | Framework web asíncrono |
+| **Uvicorn** | 0.27.0 | Servidor ASGI |
+| **OpenCV** | 4.x | Procesamiento de imágenes y reconocimiento facial |
+| **MediaPipe** | Latest | Detección facial alternativa |
+| **NumPy** | Latest | Operaciones matemáticas con embeddings |
+| **Pydantic** | 2.5.3 | Validación de datos y DTOs |
+| **psycopg2** | Latest | Driver PostgreSQL |
+| **SQLAlchemy** | 2.0.25 | ORM (opcional) |
+| **python-jose** | 3.3.0 | Tokens JWT |
+| **passlib** | 1.7.4 | Hash bcrypt para contraseñas |
+| **cryptography** | 41.0+ | Cifrado Fernet (AES-128) |
+| **SlowAPI** | 0.1.9 | Rate limiting |
+| **Bleach** | 6.1.0 | Sanitización de inputs |
+
+### Frontend
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **Next.js** | 16.1.4 | Framework React con SSR |
+| **React** | 19.2.3 | Librería UI |
+| **TypeScript** | 5.x | Tipado estático |
+| **Tailwind CSS** | 4.x | Estilos utilitarios |
+| **Axios** | 1.13.2 | Cliente HTTP |
+| **React Webcam** | 7.2.0 | Captura de video |
+| **js-cookie** | 3.0.5 | Manejo de cookies |
+
+### Base de Datos e Infraestructura
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **PostgreSQL** | 16 | Base de datos relacional |
+| **Docker** | 20+ | Contenedorización |
+| **Docker Compose** | 3.8 | Orquestación de contenedores |
+
+---
+
+## 🚀 Guía de Instalación y Ejecución
+
+### 📋 Requisitos Previos
+
+| Requisito | Versión Mínima | Descripción |
+|-----------|----------------|-------------|
+| **Python** | 3.10+ | Lenguaje backend |
+| **Node.js** | 18+ | Runtime para Next.js |
+| **npm** | 9+ | Gestor de paquetes |
+| **Docker** | 20+ | Para base de datos local (opcional) |
+| **PostgreSQL** | 16 | Base de datos (Docker o Supabase) |
+
+### 🗄️ Paso 1: Configurar Base de Datos
+
+#### Opción A: Docker (Recomendado para desarrollo local)
 
 ```powershell
-# 1. Backend
-cd back
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
+# En la raíz del proyecto, levantar PostgreSQL con Docker
+docker-compose up -d
 
-# 2. Frontend (en otra terminal)
+# Verificar que el contenedor esté corriendo
+docker ps
+```
+
+> ⚠️ **Nota:** El archivo `docker-compose.yml` configura automáticamente:
+> - Base de datos: `login_seguro`
+> - Usuario: `admin`
+> - Puerto: `5432`
+> - Ejecuta `init.sql` para crear las tablas
+
+#### Opción B: Supabase (Nube)
+
+1. Crear proyecto en [Supabase](https://supabase.com)
+2. Ejecutar el script `back/database/init.sql` en el SQL Editor
+3. Configurar variables de entorno en `back/.env`:
+
+```env
+DATABASE_HOST=tu-proyecto.supabase.co
+DATABASE_PORT=5432
+DATABASE_NAME=postgres
+DATABASE_USER=postgres
+DATABASE_PASSWORD=tu-password-supabase
+```
+
+### ⚙️ Paso 2: Backend (FastAPI + Python)
+
+```powershell
+# Navegar al directorio del backend
+cd back
+
+# Crear entorno virtual (recomendado)
+python -m venv venv
+.\venv\Scripts\Activate.ps1  # Windows PowerShell
+# source venv/bin/activate   # Linux/Mac
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Ejecutar servidor de desarrollo
+uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
+```
+
+### 🎨 Paso 3: Frontend (Next.js + React)
+
+```powershell
+# En otra terminal, navegar al frontend
 cd front
+
+# Instalar dependencias
 npm install
+
+# Ejecutar servidor de desarrollo
 npx next dev -p 3001
 ```
 
-### URLs
-| Servicio | URL |
-|----------|-----|
-| Frontend | http://localhost:3001 |
-| Backend API | http://localhost:3000 |
-| API Docs (Swagger) | http://localhost:3000/docs |
-| **Panel Admin** | http://localhost:3001/admin |
+### 🌐 URLs del Sistema
+
+| Servicio | URL | Descripción |
+|----------|-----|-------------|
+| **Frontend** | http://localhost:3001 | Interfaz de usuario |
+| **Backend API** | http://localhost:3000 | API REST |
+| **Swagger Docs** | http://localhost:3000/docs | Documentación interactiva |
+| **ReDoc** | http://localhost:3000/redoc | Documentación alternativa |
+| **Panel Admin** | http://localhost:3001/admin | Gestión de usuarios |
+| **Auditoría** | http://localhost:3001/audit | Logs del sistema |
+
+### 🔧 Script de Inicio Rápido (Windows)
+
+```powershell
+# Ejecutar desde la raíz del proyecto
+.\start.ps1
+```
 
 ---
 
 ## 🧠 Sistema de Reconocimiento Facial
 
-### Librería Utilizada
-**OpenCV (cv2)** con clasificadores Haar Cascade para detección de rostros y **LBP (Local Binary Patterns)** para extracción de características.
+### 🛠️ Tecnologías de Reconocimiento Facial
 
-### ¿Cómo funciona?
+| Componente | Tecnología | Modelo/Archivo |
+|------------|------------|----------------|
+| **Detección Facial** | OpenCV DNN | `face_detection_yunet.onnx` |
+| **Reconocimiento** | OpenCV DNN | `face_recognition_sface.onnx` |
+| **Anti-Spoofing** | OpenCV | Análisis Laplaciano |
+| **Fallback Detección** | OpenCV | Haar Cascade |
+| **Fallback Reconocimiento** | OpenCV | LBP (Local Binary Patterns) |
 
-1. **Detección:** Se usa `haarcascade_frontalface_default.xml` para localizar el rostro
-2. **Preprocesamiento:** Ecualización de histograma para normalizar iluminación
-3. **Extracción de características (LBP):**
-   - Se calcula el patrón binario local de cada píxel comparando con sus 8 vecinos
-   - Se divide el rostro en una grilla de 8x8 celdas
-   - Se genera un histograma de 16 bins por cada celda
-   - Resultado: Vector de 1024 características (64 celdas × 16 bins)
-4. **Almacenamiento:** El encoding se serializa a JSON y se guarda en la columna `face_encoding` de PostgreSQL
-5. **Comparación:** Al verificar, se usan múltiples métricas:
-   - Intersección de histogramas (40%)
-   - Chi-Square (30%)
-   - Correlación (30%)
+### 📁 Modelos de Deep Learning
 
-### Ventajas de LBP
-- **Invariante a cambios de iluminación** - funciona mejor con diferentes condiciones de luz
-- **Robusto a cambios de fondo** - se enfoca en patrones de textura facial
-- **Eficiente computacionalmente** - no requiere GPU
+Los modelos ONNX se encuentran en `back/models/`:
 
-### Anti-Spoofing
-- **Técnica:** Análisis de varianza Laplaciana
-- **Cómo funciona:** Las fotos de fotos/pantallas tienen menos textura y variación que un rostro real
-- **Umbral:** Si la varianza es < 30, se rechaza como posible spoofing
+| Archivo | Propósito | Especificaciones |
+|---------|-----------|------------------|
+| `face_detection_yunet.onnx` | Detector facial de alta precisión | Input: 320x320, Score: 0.9 |
+| `face_recognition_sface.onnx` | Extractor de embeddings faciales | Output: Vector 128D |
 
-### Código de Respaldo
-- **Fallback seguro** cuando la verificación facial falla
-- Código alfanumérico de 8 caracteres (**un solo uso**)
-- Hash bcrypt almacenado en base de datos
-- Código cifrado con Fernet (AES-128) para visualización
-- **Importante:** Después de usar el código, se invalida automáticamente
-- Rate limit: 3 generaciones por hora por usuario
+### 🔄 Pipeline de Reconocimiento Facial
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE VERIFICACIÓN FACIAL                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. CAPTURA            2. ANTI-SPOOFING        3. DETECCIÓN             │
+│  ┌──────────┐          ┌──────────────┐        ┌─────────────┐          │
+│  │  Webcam  │ ──────▶  │  Laplaciano  │ ─────▶ │   YuNet     │          │
+│  │  Base64  │          │  Varianza>30 │        │   DNN       │          │
+│  └──────────┘          └──────────────┘        └─────────────┘          │
+│                               │                       │                 │
+│                               ▼                       ▼                 │
+│                        ¿Rostro Real?          ¿Rostro Detectado?        │
+│                          │    │                  │       │              │
+│                         Sí   No                 Sí      No              │
+│                          │    │                  │       │              │
+│                          │    └───────────▶ RECHAZAR ◀───┘              │
+│                          │                                              │
+│                          ▼                                              │
+│  4. EXTRACCIÓN         5. COMPARACIÓN          6. RESULTADO            │
+│  ┌─────────────┐       ┌──────────────┐        ┌─────────────┐          │
+│  │   SFace     │ ────▶ │   Coseno     │ ─────▶ │  Match >    │          │
+│  │  128-dim    │       │   70% + L2   │        │   35% ?     │          │
+│  └─────────────┘       │   30%        │        └─────────────┘          │
+│                        └──────────────┘               │                 │
+│                                                   Sí     No             │
+│                                                   │       │             │
+│                                              ACCESO   DENEGADO          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 📊 Algoritmos de Reconocimiento
+
+#### 1. YuNet - Detección Facial (DNN)
+| Característica | Valor |
+|----------------|-------|
+| **Tipo** | Red Neuronal Convolucional |
+| **Formato** | ONNX |
+| **Input** | Imagen 320x320 px |
+| **Score Threshold** | 0.9 |
+| **NMS Threshold** | 0.3 |
+| **Output** | Coordenadas (x, y, w, h) + 5 landmarks |
+
+#### 2. SFace - Reconocimiento Facial (DNN)
+| Característica | Valor |
+|----------------|-------|
+| **Tipo** | Embedding Facial Deep Learning |
+| **Formato** | ONNX |
+| **Dimensiones** | Vector de **128 características** (float32) |
+| **Métricas** | Similitud Coseno + Distancia L2 |
+
+#### 3. Métricas de Comparación
+| Métrica | Peso | Descripción |
+|---------|------|-------------|
+| **Similitud Coseno** | 70% | Mide el ángulo entre vectores de embedding |
+| **Distancia L2 Normalizada** | 30% | Distancia euclidiana normalizada |
+
+### 🎯 Umbrales de Verificación
+
+| Método | Umbral | Descripción |
+|--------|--------|-------------|
+| **SFace Coseno** | ≥ 0.35 (35%) | Similitud mínima requerida |
+| **Distancia Combinada** | < 0.30 | Umbral de aceptación |
+| **LBP Fallback** | ≥ 0.90 (90%) | Más estricto por menor precisión |
+
+### 🛡️ Sistema Anti-Spoofing
+
+| Técnica | Descripción | Umbral |
+|---------|-------------|--------|
+| **Varianza Laplaciana** | Detecta falta de textura en fotos/pantallas | > 30 |
+| **Contraste (STD)** | Analiza desviación estándar de grises | > 20 |
+| **Score Combinado** | Textura (70%) + Contraste (30%) | 0-1 |
+
+**¿Cómo funciona el anti-spoofing?**
+- Las fotos de fotos/pantallas tienen menos variación de textura
+- El operador Laplaciano detecta bordes y detalles finos
+- Un rostro real tiene mayor varianza que una imagen plana o impresa
+- Se analiza también el contraste para detectar imágenes de baja calidad
+
+### 🔄 Sistema de Fallback
+
+Si los modelos DNN no están disponibles, el sistema usa automáticamente:
+
+| Componente | Fallback | Descripción |
+|------------|----------|-------------|
+| **Detección** | Haar Cascade | `haarcascade_frontalface_default.xml` |
+| **Reconocimiento** | LBP | Local Binary Patterns con CLAHE |
+| **Preprocesamiento** | CLAHE | Ecualización adaptativa de histograma |
+
+### 🔑 Código de Respaldo
+
+| Característica | Valor |
+|----------------|-------|
+| **Longitud** | 8 caracteres alfanuméricos |
+| **Uso** | Un solo uso (se invalida después) |
+| **Almacenamiento** | Hash bcrypt en base de datos |
+| **Visualización** | Cifrado Fernet (AES-128) |
+| **Rate Limit** | 3 generaciones/hora/usuario |
+| **Propósito** | Fallback cuando la verificación facial falla |
 
 ---
 
@@ -107,7 +302,21 @@ npx next dev -p 3001
 | `auditor` | Todo lo anterior + ver logs de auditoría |
 | `admin` | Todo lo anterior + gestionar usuarios |
 
+### Características de Seguridad Implementadas
 
+| Característica | Implementación |
+|----------------|----------------|
+| **SQL Injection** | Consultas parametrizadas (psycopg2) |
+| **Contraseñas** | Hash bcrypt (12 rondas) |
+| **Sesiones** | JWT con expiración 30 min |
+| **Fuerza Bruta** | Rate limiting + bloqueo cuenta |
+| **Anti-Spoofing** | Análisis Laplaciano + Contraste |
+| **Validación** | Pydantic + sanitización Bleach |
+| **HTTPS** | Requerido en producción |
+| **Cookies Seguras** | `secure=true, sameSite=strict` |
+| **Logout Seguro** | Limpieza completa de sesión |
+| **Código de Respaldo** | Fallback cifrado para biometría |
+| **Cifrado de Códigos** | Fernet (AES-128) derivado de JWT_SECRET |
 
 ---
 
@@ -118,7 +327,7 @@ npx next dev -p 3001
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Frontend                              │
-│           Next.js 15 + TypeScript + React Webcam            │
+│           Next.js 16 + TypeScript + React Webcam            │
 └─────────────────────────┬───────────────────────────────────┘
                           │ REST API (HTTPS)
 ┌─────────────────────────▼───────────────────────────────────┐
@@ -136,6 +345,42 @@ npx next dev -p 3001
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Estructura del Proyecto
+
+```
+Login_Seguro/
+├── docker-compose.yml          # Configuración de PostgreSQL
+├── start.ps1                   # Script de inicio rápido
+├── README.md
+│
+├── back/                       # Backend Python/FastAPI
+│   ├── requirements.txt        # Dependencias Python
+│   ├── models/                 # Modelos ONNX para reconocimiento facial
+│   │   ├── face_detection_yunet.onnx
+│   │   └── face_recognition_sface.onnx
+│   ├── database/               # Scripts SQL
+│   │   ├── init.sql
+│   │   ├── add_roles.sql
+│   │   └── audit_logs.sql
+│   └── app/
+│       ├── main.py             # Entry point FastAPI
+│       ├── config/             # Configuración y settings
+│       ├── domain/             # Entidades e interfaces
+│       ├── application/        # Use cases y DTOs
+│       ├── infrastructure/     # Repositorios y servicios
+│       └── presentation/       # Routes y middleware
+│
+└── front/                      # Frontend Next.js/React
+    ├── package.json
+    ├── src/
+    │   ├── app/                # Pages (App Router)
+    │   ├── components/         # Componentes React
+    │   ├── hooks/              # Custom hooks
+    │   ├── services/           # API client
+    │   └── types/              # TypeScript types
+    └── public/
+```
+
 ### Patrones de Diseño Implementados
 
 | Patrón | Uso en el Sistema |
@@ -144,8 +389,9 @@ npx next dev -p 3001
 | **Dependency Injection** | FastAPI `Depends()` inyecta repositorios y servicios |
 | **Strategy** | Anti-spoofing configurable (Laplacian variance) |
 | **Factory** | Creación de tokens JWT con configuración |
-| **Singleton** | Conexión a base de datos (`db_connection.py`) |
+| **Singleton** | Conexión a base de datos (`connection.py`) |
 | **DTO** | `LoginRequest`, `RegisterRequest` para transferencia de datos |
+| **Facade** | `OpenCVDNNFaceService` unifica detección y reconocimiento |
 
 ### Principios SOLID
 
@@ -180,24 +426,6 @@ Los reportes se generan en:
 
 ---
 
-## 🔒 Características de Seguridad
-
-| Característica | Implementación |
-|----------------|----------------|
-| SQL Injection | Consultas parametrizadas (psycopg2) |
-| Contraseñas | Hash bcrypt (12 rondas) |
-| Sesiones | JWT con expiración 30 min |
-| Fuerza bruta | Rate limiting + bloqueo cuenta |
-| Anti-Spoofing | Análisis Laplaciano |
-| Validación | Pydantic + sanitización |
-| HTTPS | Requerido en producción |
-| Cookies Seguras | `secure=true, sameSite=strict` |
-| Logout Seguro | Limpieza completa de sesión |
-| Código de Respaldo | Fallback cifrado para biometría (un solo uso) |
-| Cifrado de Códigos | Fernet (AES-128) derivado de JWT_SECRET |
-
----
-
 ## ⚠️ Requisitos para Registro Facial
 
 > **IMPORTANTE:** Para un registro facial exitoso, el usuario debe:
@@ -214,40 +442,40 @@ Los reportes se generan en:
 ## 📡 API Endpoints
 
 ### Autenticación
-- `POST /api/auth/register` - Registrar usuario
-- `POST /api/auth/login` - Login con credenciales
-- `GET /api/auth/profile` - Obtener perfil de usuario
-- `PATCH /api/auth/preferences` - Actualizar preferencias
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Registrar usuario |
+| `POST` | `/api/auth/login` | Login con credenciales |
+| `GET` | `/api/auth/profile` | Obtener perfil de usuario |
+| `PATCH` | `/api/auth/preferences` | Actualizar preferencias |
 
 ### Biometría Facial
-- `POST /api/face/register` - Registrar rostro (requiere JWT)
-- `POST /api/face/verify` - Verificar rostro (requiere JWT)
-- `GET /api/face/status` - Estado del registro facial
-- `GET /api/face/backup-code` - Obtener estado del código de respaldo
-- `POST /api/face/backup-code/generate` - Generar código de respaldo
-- `POST /api/face/backup-code/verify` - Verificar código de respaldo (lo invalida)
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `POST` | `/api/face/register` | Registrar rostro (requiere JWT) |
+| `POST` | `/api/face/verify` | Verificar rostro (requiere JWT) |
+| `GET` | `/api/face/status` | Estado del registro facial |
+| `GET` | `/api/face/backup-code` | Estado del código de respaldo |
+| `POST` | `/api/face/backup-code/generate` | Generar código de respaldo |
+| `POST` | `/api/face/backup-code/verify` | Verificar código (lo invalida) |
 
 ### Administrador
-- `GET /api/admin/users` - Listar todos los usuarios
-- `GET /api/admin/users/search?q=` - Buscar usuarios
-- `GET /api/admin/users/blocked` - Listar bloqueados
-- `GET /api/admin/stats` - Estadísticas del sistema
-- `POST /api/admin/users` - Crear nuevo usuario
-- `PUT /api/admin/users/{id}` - Actualizar usuario
-- `POST /api/admin/unlock/{id}` - Desbloquear usuario
-- `POST /api/admin/disable/{id}` - Deshabilitar usuario
-- `POST /api/admin/enable/{id}` - Habilitar usuario
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/admin/users` | Listar todos los usuarios |
+| `GET` | `/api/admin/users/search?q=` | Buscar usuarios |
+| `GET` | `/api/admin/users/blocked` | Listar bloqueados |
+| `GET` | `/api/admin/stats` | Estadísticas del sistema |
+| `POST` | `/api/admin/users` | Crear nuevo usuario |
+| `PUT` | `/api/admin/users/{id}` | Actualizar usuario |
+| `POST` | `/api/admin/unlock/{id}` | Desbloquear usuario |
+| `POST` | `/api/admin/disable/{id}` | Deshabilitar usuario |
+| `POST` | `/api/admin/enable/{id}` | Habilitar usuario |
 
 ### Auditoría
-- `GET /api/audit/logs` - Ver logs de auditoría (solo auditor/admin)
-
----
-
-## 🛠️ Tecnologías
-
-**Backend:** FastAPI, OpenCV (LBP), PostgreSQL/Docker, Bcrypt, JWT, SlowAPI, Cryptography (Fernet)  
-**Frontend:** Next.js 15, TypeScript, Tailwind CSS, React Webcam  
-**Seguridad:** Bandit (Python), ESLint Security (TypeScript)
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/audit/logs` | Ver logs de auditoría (solo auditor/admin) |
 
 ---
 
@@ -257,6 +485,17 @@ Los reportes se generan en:
 - Roles semánticos en modales y formularios
 - Navegación por teclado soportada
 - Contraste de colores WCAG 2.1 AA
+
+---
+
+## 📚 Referencias y Documentación
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [OpenCV Face Detection](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html)
+- [YuNet Paper](https://arxiv.org/abs/2108.03312)
+- [SFace: Sigmoid-Constrained Hypersphere Loss](https://arxiv.org/abs/2205.12010)
+- [Next.js Documentation](https://nextjs.org/docs)
+- [React Webcam](https://github.com/mozmorris/react-webcam)
 
 ---
 

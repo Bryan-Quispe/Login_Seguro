@@ -58,12 +58,12 @@ class OpenCVDNNFaceService(IFaceService):
                     ""
                 )
                 
-                logger.info("✅ Servicio DNN inicializado con YuNet + SFace")
+                logger.info(" Servicio DNN inicializado con YuNet + SFace")
             except Exception as e:
                 logger.error(f"Error inicializando DNN: {e}")
                 self._use_dnn = False
         else:
-            logger.warning("⚠️ Modelos DNN no encontrados, usando Haar Cascade")
+            logger.warning(" Modelos DNN no encontrados, usando Haar Cascade")
         
         # Fallback: clasificadores Haar
         self._face_cascade = cv2.CascadeClassifier(
