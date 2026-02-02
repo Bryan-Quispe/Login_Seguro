@@ -321,15 +321,19 @@ export default function AuditPage() {
                 </div>
 
                 {/* Código de respaldo del Auditor */}
-                <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="mb-6 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
-                            <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                             </svg>
                             <div>
-                                <span className="text-sm text-amber-400 font-medium">Código de Respaldo</span>
-                                <p className="text-xs text-gray-500">Para acceder sin verificación facial</p>
+                                <span className="text-sm font-medium text-white">
+                                    Código de Respaldo
+                                </span>
+                                <p className="text-xs text-gray-500">
+                                    Uso ilimitado hasta generar uno nuevo
+                                </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -340,11 +344,11 @@ export default function AuditPage() {
                             )}
                             <Button
                                 variant="secondary"
-                                className="text-xs py-1 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
+                                className="text-xs py-1 px-3 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400"
                                 onClick={handleGenerateBackupCode}
                                 isLoading={generatingCode}
                             >
-                                {backupCode ? 'Regenerar' : 'Generar'} Código
+                                Generar Código
                             </Button>
                         </div>
                     </div>

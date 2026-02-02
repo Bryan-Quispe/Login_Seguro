@@ -113,6 +113,7 @@ export default function FaceVerifyPage() {
                             mode="verify"
                             onSuccess={handleSuccess}
                             onError={handleError}
+                            onShowBackupCode={() => setShowBackupModal(true)}
                         />
 
                         {/* Opción de código de respaldo - siempre visible */}

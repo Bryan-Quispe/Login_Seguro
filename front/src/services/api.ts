@@ -72,20 +72,28 @@ export const authApi = {
         return response.data;
     },
 
-    logout: () => {
+    logout: async () => {
         // === LIMPIEZA COMPLETA DE SESIÓN SEGURO ===
 
-        // 1. Eliminar token principal
+        // 1. Llamar al backend para limpiar sesión activa
+        try {
+            await api.post('/api/auth/logout');
+        } catch (error) {
+            console.error('Error al cerrar sesión en el servidor:', error);
+            // Continuar con limpieza local incluso si falla el backend
+        }
+
+        // 2. Eliminar token principal
         Cookies.remove('access_token');
         Cookies.remove('admin_token');  // Si existe para admin
 
-        // 2. Limpiar sessionStorage completamente
+        // 3. Limpiar sessionStorage completamente
         if (typeof window !== 'undefined' && window.sessionStorage) {
             sessionStorage.removeItem('authResponse');
             sessionStorage.clear();  // Limpieza completa
         }
 
-        // 3. Limpiar localStorage de datos de sesión (mantener preferencias de usuario)
+        // 4. Limpiar localStorage de datos de sesión (mantener preferencias de usuario)
         if (typeof window !== 'undefined' && window.localStorage) {
             // Preservar solo configuraciones no sensibles
             const themePreference = localStorage.getItem('theme');
@@ -97,7 +105,7 @@ export const authApi = {
             // Solo limpiar datos de autenticación
         }
 
-        // 4. Limpiar caché de la aplicación si es posible
+        // 5. Limpiar caché de la aplicación si es posible
         if (typeof window !== 'undefined' && 'caches' in window) {
             caches.keys().then(names => {
                 names.forEach(name => {
@@ -108,7 +116,7 @@ export const authApi = {
             });
         }
 
-        // 5. Redirigir al login
+        // 6. Redirigir al login
         if (typeof window !== 'undefined') {
             window.location.href = '/login';
         }

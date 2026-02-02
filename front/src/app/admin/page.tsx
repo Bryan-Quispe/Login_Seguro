@@ -569,22 +569,18 @@ export default function AdminPage() {
                     </div>
 
                     {/* Código de respaldo del Admin */}
-                    <div className={`mt-4 p-4 rounded-lg ${hasExistingBackupCode ? 'bg-green-500/10 border border-green-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+                    <div className="mt-4 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
-                                <svg className={`w-5 h-5 ${hasExistingBackupCode ? 'text-green-400' : 'text-amber-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                                 </svg>
                                 <div>
-                                    <span className={`text-sm font-medium ${hasExistingBackupCode ? 'text-green-400' : 'text-amber-400'}`}>
+                                    <span className="text-sm font-medium text-white">
                                         Código de Respaldo
                                     </span>
                                     <p className="text-xs text-gray-500">
-                                        Estado: {hasExistingBackupCode ? (
-                                            <span className="text-green-400">✓ Configurado</span>
-                                        ) : (
-                                            <span className="text-amber-400">⚠️ No configurado</span>
-                                        )}
+                                        Uso ilimitado hasta generar uno nuevo
                                     </p>
                                 </div>
                             </div>
@@ -596,7 +592,7 @@ export default function AdminPage() {
                                 )}
                                 <Button
                                     variant="secondary"
-                                    className={`text-xs py-1 px-3 ${hasExistingBackupCode ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400'}`}
+                                    className="text-xs py-1 px-3 bg-violet-500/20 hover:bg-violet-500/30 text-violet-400"
                                     onClick={handleGenerateBackupCode}
                                     isLoading={generatingCode}
                                 >
@@ -659,6 +655,7 @@ export default function AdminPage() {
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Email</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Rol</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Rostro</th>
+                                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Intentos</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Estado</th>
                                         <th className="text-left py-3 px-4 text-gray-400 font-medium">Acciones</th>
                                     </tr>
@@ -686,6 +683,19 @@ export default function AdminPage() {
                                                         Pendiente
                                                     </span>
                                                 )}
+                                            </td>
+                                            <td className="py-3 px-4">
+                                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                                    user.failed_attempts >= 3
+                                                        ? 'bg-red-500/10 text-red-400'
+                                                        : user.failed_attempts >= 2
+                                                        ? 'bg-orange-500/10 text-orange-400'
+                                                        : user.failed_attempts >= 1
+                                                        ? 'bg-yellow-500/10 text-yellow-400'
+                                                        : 'bg-green-500/10 text-green-400'
+                                                }`}>
+                                                    {user.failed_attempts}/3
+                                                </span>
                                             </td>
                                             <td className="py-3 px-4">
                                                 {user.is_locked ? (

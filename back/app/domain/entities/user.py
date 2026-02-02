@@ -32,6 +32,7 @@ class User:
     requires_password_reset: bool = False  # Si debe cambiar contraseña
     backup_code_hash: Optional[str] = None  # Hash del código de respaldo para fallback biométrico
     backup_code_encrypted: Optional[str] = None  # Código cifrado para visualización
+    active_session_token: Optional[str] = None  # Token de sesión activa (solo una sesión por usuario)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     

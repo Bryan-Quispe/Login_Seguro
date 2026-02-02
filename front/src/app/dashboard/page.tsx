@@ -237,29 +237,8 @@ export default function DashboardPage() {
                                     <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
                                         <p className="text-sm text-gray-400 mb-4">
                                             El código de respaldo permite acceder cuando falla la verificación facial.
-                                            Es de un solo uso.
+                                            Se puede usar múltiples veces hasta que genere uno nuevo.
                                         </p>
-
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <span className="text-gray-400">Estado:</span>
-                                            <span className={`px-2 py-1 text-xs rounded-full ${profile.has_backup_code
-                                                    ? 'bg-green-500/20 text-green-400'
-                                                    : 'bg-yellow-500/20 text-yellow-400'
-                                                }`}>
-                                                {profile.has_backup_code ? '✓ Configurado' : 'No configurado'}
-                                            </span>
-                                        </div>
-
-                                        {profile.has_backup_code && !backupCode && (
-                                            <div className="p-4 mb-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                                                <p className="text-sm text-green-400">
-                                                    ✓ Ya tiene un código de respaldo configurado.
-                                                </p>
-                                                <p className="text-xs text-gray-400 mt-2">
-                                                    Este código le permite acceder si falla la verificación facial.
-                                                </p>
-                                            </div>
-                                        )}
 
                                         {backupCode && (
                                             <div className="p-4 mb-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
@@ -270,7 +249,10 @@ export default function DashboardPage() {
                                                     {backupCode}
                                                 </p>
                                                 <p className="text-xs text-red-400 text-center mt-2 font-semibold">
-                                                    Este código NO se volverá a mostrar. Guárdelo en un lugar seguro.
+                                                    ⚠️ Este código solo se muestra UNA VEZ. Guárdelo en un lugar seguro.
+                                                </p>
+                                                <p className="text-xs text-green-400 text-center mt-1">
+                                                    ✓ Puede usarlo múltiples veces hasta que genere uno nuevo.
                                                 </p>
                                             </div>
                                         )}

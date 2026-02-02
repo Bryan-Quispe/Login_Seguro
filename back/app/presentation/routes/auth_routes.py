@@ -3,9 +3,11 @@ Login Seguro - Rutas de Autenticación
 Endpoints para registro y login con credenciales
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from datetime import datetime
 import logging
 
 from ...application.dto.user_dto import (
@@ -16,6 +18,7 @@ from ...application.dto.user_dto import (
 )
 from ...application.use_cases import RegisterUserUseCase, LoginUserUseCase
 from ...infrastructure.database import UserRepositoryImpl
+from ..middleware.auth_middleware import jwt_bearer, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +79,36 @@ async def login(
     - Indica si requiere registro o verificación facial
     """
     use_case = LoginUserUseCase(user_repo)
-    success, message, token_response = use_case.execute(data)
+    success, message, token_response, additional_data = use_case.execute(data)
     
     if not success:
-        raise HTTPException(
+        # Retornar información adicional sobre intentos fallidos en JSON
+        error_data = {
+            "detail": message,
+            "remaining_attempts": 3,
+            "account_locked": False,
+            "remaining_minutes": 0,
+            "role": "user",
+            "active_session_exists": False
+        }
+        
+        if additional_data:
+            if additional_data.get('remaining_attempts') is not None:
+                error_data['remaining_attempts'] = additional_data['remaining_attempts']
+            if additional_data.get('account_locked') is not None:
+                error_data['account_locked'] = additional_data['account_locked']
+            if additional_data.get('locked_until') is not None:
+                error_data['locked_until'] = additional_data['locked_until']
+                remaining_min = (additional_data['locked_until'] - datetime.now()).seconds // 60
+                error_data['remaining_minutes'] = remaining_min
+            if additional_data.get('role') is not None:
+                error_data['role'] = additional_data['role']
+            if additional_data.get('active_session_exists') is not None:
+                error_data['active_session_exists'] = additional_data['active_session_exists']
+        
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message,
+            content=error_data,
             headers={"WWW-Authenticate": "Bearer"}
         )
     
@@ -94,9 +121,38 @@ async def health_check():
     return {"status": "healthy", "service": "auth"}
 
 
+@router.post("/logout")
+async def logout(
+    payload: dict = Depends(jwt_bearer),
+    user_repo: UserRepositoryImpl = Depends(get_user_repository)
+):
+    """
+    Cierra la sesión del usuario.
+    Limpia el token de sesión activa para permitir nuevos logins.
+    """
+    user_id = get_current_user_id(payload)
+    user = user_repo.find_by_id(user_id)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    # Limpiar token de sesión activa
+    user.active_session_token = None
+    user_repo.update(user)
+    
+    logger.info(f"Usuario {user.username} cerró sesión")
+    
+    return {
+        "success": True,
+        "message": "Sesión cerrada exitosamente"
+    }
+
+
 # ===== ENDPOINTS DE PERFIL PARA CLIENTE =====
 
-from ..middleware.auth_middleware import jwt_bearer, get_current_user_id
 from pydantic import BaseModel
 from typing import Optional
 

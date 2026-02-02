@@ -17,13 +17,14 @@ import { useAuth } from '@/hooks';
 
 export default function LoginPage() {
     const router = useRouter();
-    const { login, loading, error, clearError } = useAuth();
+    const { login, loading, error, clearError, loginAttempts, accountLocked, lockedMinutes } = useAuth();
 
     const [formData, setFormData] = useState({
         username: '',
         password: '',
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+    const [userRole, setUserRole] = useState<string>('user'); // Para saber si es admin
 
     const validateForm = (): boolean => {
         const errors: Record<string, string> = {};
@@ -116,6 +117,38 @@ export default function LoginPage() {
                     </p>
                 </div>
 
+                {/* Locked State */}
+                {accountLocked && (
+                    <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 animate-pulse">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                                <svg
+                                    className="w-6 h-6 text-red-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                    />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-red-400 font-bold">Cuenta Bloqueada</h3>
+                                <p className="text-red-300/80 text-sm mt-1">
+                                    {userRole === 'admin'
+                                        ? `Le falta ${lockedMinutes} minuto(s) para desbloquear su cuenta de administrador.`
+                                        : `Debe contactar al administrador para desbloquear su cuenta.`
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Iniciar Sesión</CardTitle>
@@ -126,6 +159,32 @@ export default function LoginPage() {
 
                     <form onSubmit={handleSubmit}>
                         <CardContent>
+                            {/* Attempts indicator - solo si hay intentos fallidos */}
+                            {loginAttempts < 3 && !accountLocked && (
+                                <div className="mb-4 p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-gray-400">Intentos restantes:</span>
+                                        <div className="flex space-x-1">
+                                            {[...Array(3)].map((_, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={`w-2 h-2 rounded-full transition-colors ${
+                                                        i < loginAttempts
+                                                            ? 'bg-green-500'
+                                                            : 'bg-red-500'
+                                                    }`}
+                                                />
+                                            ))}
+                                        </div>
+                                        <span className={`text-xs font-bold ${
+                                            loginAttempts === 1 ? 'text-red-400' : 'text-gray-300'
+                                        }`}>
+                                            {loginAttempts} / 3
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
                             <Input
                                 label="Usuario"
                                 name="username"
@@ -135,6 +194,7 @@ export default function LoginPage() {
                                 onChange={handleChange}
                                 error={formErrors.username}
                                 autoComplete="username"
+                                disabled={accountLocked && userRole === 'admin'}
                                 icon={
                                     <svg
                                         className="w-5 h-5"
@@ -161,6 +221,7 @@ export default function LoginPage() {
                                 onChange={handleChange}
                                 error={formErrors.password}
                                 autoComplete="current-password"
+                                disabled={accountLocked && userRole === 'admin'}
                                 icon={
                                     <svg
                                         className="w-5 h-5"
@@ -179,10 +240,20 @@ export default function LoginPage() {
                             />
 
                             {error && (
-                                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                                    <div className="flex items-center space-x-2">
+                                <div className={`p-4 rounded-lg border ${
+                                    loginAttempts === 1 && !accountLocked
+                                        ? 'bg-orange-500/10 border-orange-500/20'
+                                        : accountLocked
+                                        ? 'bg-red-500/10 border-red-500/20'
+                                        : 'bg-red-500/10 border-red-500/20'
+                                }`}>
+                                    <div className="flex items-start space-x-2">
                                         <svg
-                                            className="w-5 h-5 text-red-400"
+                                            className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                                                loginAttempts === 1 && !accountLocked
+                                                    ? 'text-orange-400'
+                                                    : 'text-red-400'
+                                            }`}
                                             fill="none"
                                             stroke="currentColor"
                                             viewBox="0 0 24 24"
@@ -194,15 +265,24 @@ export default function LoginPage() {
                                                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                             />
                                         </svg>
-                                        <span className="text-sm text-red-400">{error}</span>
+                                        <span className={`text-sm ${
+                                            loginAttempts === 1 && !accountLocked
+                                                ? 'text-orange-400'
+                                                : 'text-red-400'
+                                        }`}>{error}</span>
                                     </div>
                                 </div>
                             )}
                         </CardContent>
 
                         <CardFooter>
-                            <Button type="submit" className="w-full" isLoading={loading}>
-                                Continuar
+                            <Button 
+                                type="submit" 
+                                className="w-full" 
+                                isLoading={loading}
+                                disabled={accountLocked}
+                            >
+                                {accountLocked ? `Intente en ${lockedMinutes}m` : 'Continuar'}
                             </Button>
 
                             <p className="mt-6 text-center text-sm text-gray-500">

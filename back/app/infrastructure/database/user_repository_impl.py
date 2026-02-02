@@ -29,8 +29,8 @@ class UserRepositoryImpl(IUserRepository):
         Usa consultas parametrizadas para prevenir SQL Injection.
         """
         query = """
-            INSERT INTO users (username, email, password_hash, face_encoding, face_registered, role, requires_password_reset)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO users (username, email, password_hash, face_encoding, face_registered, role, requires_password_reset, active_session_token)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, created_at, updated_at
         """
         
@@ -42,7 +42,8 @@ class UserRepositoryImpl(IUserRepository):
                 user.face_encoding,
                 user.face_registered,
                 user.role if hasattr(user, 'role') else 'user',
-                user.requires_password_reset if hasattr(user, 'requires_password_reset') else False
+                user.requires_password_reset if hasattr(user, 'requires_password_reset') else False,
+                user.active_session_token if hasattr(user, 'active_session_token') else None
             ))
             
             result = cursor.fetchone()
@@ -61,6 +62,7 @@ class UserRepositoryImpl(IUserRepository):
                    COALESCE(role, 'user') as role, 
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    backup_code_hash, backup_code_encrypted,
+                   active_session_token,
                    created_at, updated_at
             FROM users 
             WHERE id = %s
@@ -86,6 +88,7 @@ class UserRepositoryImpl(IUserRepository):
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    backup_code_hash, backup_code_encrypted,
+                   active_session_token,
                    created_at, updated_at
             FROM users 
             WHERE username = %s
@@ -108,6 +111,7 @@ class UserRepositoryImpl(IUserRepository):
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    backup_code_hash, backup_code_encrypted,
+                   active_session_token,
                    created_at, updated_at
             FROM users 
             WHERE email = %s
@@ -130,6 +134,7 @@ class UserRepositoryImpl(IUserRepository):
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    backup_code_hash, backup_code_encrypted,
+                   active_session_token,
                    created_at, updated_at
             FROM users 
             WHERE locked_until IS NOT NULL AND locked_until > NOW()
@@ -149,6 +154,7 @@ class UserRepositoryImpl(IUserRepository):
                    COALESCE(role, 'user') as role,
                    COALESCE(requires_password_reset, FALSE) as requires_password_reset,
                    backup_code_hash, backup_code_encrypted,
+                   active_session_token,
                    created_at, updated_at
             FROM users 
             WHERE COALESCE(role, 'user') != 'admin'
@@ -168,7 +174,8 @@ class UserRepositoryImpl(IUserRepository):
                 face_encoding = %s, face_registered = %s,
                 failed_login_attempts = %s, locked_until = %s,
                 role = %s, requires_password_reset = %s,
-                backup_code_hash = %s, backup_code_encrypted = %s
+                backup_code_hash = %s, backup_code_encrypted = %s,
+                active_session_token = %s
             WHERE id = %s
             RETURNING updated_at
         """
@@ -186,6 +193,7 @@ class UserRepositoryImpl(IUserRepository):
                 user.requires_password_reset if hasattr(user, 'requires_password_reset') else False,
                 user.backup_code_hash if hasattr(user, 'backup_code_hash') else None,
                 user.backup_code_encrypted if hasattr(user, 'backup_code_encrypted') else None,
+                user.active_session_token if hasattr(user, 'active_session_token') else None,
                 user.id
             ))
             
@@ -293,8 +301,9 @@ class UserRepositoryImpl(IUserRepository):
             requires_password_reset=row[9] if len(row) > 9 else False,
             backup_code_hash=row[10] if len(row) > 10 else None,
             backup_code_encrypted=row[11] if len(row) > 11 else None,
-            created_at=row[12] if len(row) > 12 else None,
-            updated_at=row[13] if len(row) > 13 else None
+            active_session_token=row[12] if len(row) > 12 else None,
+            created_at=row[13] if len(row) > 13 else None,
+            updated_at=row[14] if len(row) > 14 else None
         )
     
     def create_admin_if_not_exists(self, email: str, password: str) -> Optional[User]:

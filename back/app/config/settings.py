@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # Security
     BCRYPT_ROUNDS: int = 12
-    MAX_LOGIN_ATTEMPTS: int = 5
+    MAX_LOGIN_ATTEMPTS: int = 3
     LOCKOUT_DURATION_MINUTES: int = 15
     
     # CORS

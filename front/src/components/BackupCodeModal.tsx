@@ -168,7 +168,7 @@ export default function BackupCodeModal({
                         </div>
 
                         <p className="text-xs text-gray-500 text-center">
-                            💡 El código de respaldo es de un solo uso
+                            💡 El código se puede usar múltiples veces hasta que genere uno nuevo
                         </p>
                     </form>
                 </CardContent>

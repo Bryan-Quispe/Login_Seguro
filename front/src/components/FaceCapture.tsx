@@ -11,6 +11,7 @@ interface FaceCaptureProps {
     mode: 'register' | 'verify';
     onSuccess: (role?: string) => void;
     onError?: (error: string) => void;
+    onShowBackupCode?: () => void; // Callback para mostrar modal de código de respaldo
 }
 
 interface ApiResponse {
@@ -27,14 +28,16 @@ interface ApiResponse {
     };
 }
 
-export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
+export function FaceCapture({ mode, onSuccess, onError, onShowBackupCode }: FaceCaptureProps) {
     const router = useRouter();
     const [isProcessing, setIsProcessing] = useState(false);
-    const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'locked'>('idle');
+    const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'locked' | 'warning'>('idle');
     const [message, setMessage] = useState<string>('');
     const [detailMessage, setDetailMessage] = useState<string>('');
     const [remainingAttempts, setRemainingAttempts] = useState<number>(3);
     const [isLoading, setIsLoading] = useState(true);
+    const [showBackupOption, setShowBackupOption] = useState(false); // Mostrar opción de backup code
+    const [userRole, setUserRole] = useState<string>(''); // Almacenar rol del usuario
 
     // Función para redirigir al login cuando se bloquea o agotan intentos
     const handleLocked = useCallback(() => {
@@ -49,6 +52,17 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
+                // Extraer rol del token JWT
+                const token = Cookies.get('access_token');
+                if (token) {
+                    try {
+                        const decodedToken = JSON.parse(atob(token.split('.')[1]));
+                        setUserRole(decodedToken.role || '');
+                    } catch (e) {
+                        console.error('Error decoding token:', e);
+                    }
+                }
+
                 const statusData = await faceApi.getStatus();
                 if (statusData.remaining_attempts !== undefined) {
                     setRemainingAttempts(statusData.remaining_attempts);
@@ -123,17 +137,9 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
             setStatus('locked');
             setMessage('Su cuenta ha sido bloqueada por seguridad. Redirigiendo al login...');
             setDetailMessage('');
+            setShowBackupOption(false);
             handleLocked();
         } else {
-            setStatus('error');
-            const friendlyMsg = translateError(response.message || 'Error en el procesamiento facial');
-            setMessage(friendlyMsg);
-            
-            // Guardar mensaje original del backend como detalle
-            if (response.message && response.message !== friendlyMsg) {
-                setDetailMessage(response.message);
-            }
-
             // Actualizar intentos restantes
             let newAttempts = remainingAttempts;
             if (response.data?.remaining_attempts !== undefined) {
@@ -144,12 +150,34 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 setRemainingAttempts(newAttempts);
             }
 
-            // Si se agotaron los intentos, redirigir al login
-            if (newAttempts <= 0) {
+            // Lógica de alertas progresivas
+            if (newAttempts === 0) {
+                // Tercer fallo - bloqueo
                 setStatus('locked');
-                setMessage('Se agotaron los intentos. Redirigiendo al login...');
+                setMessage('Cuenta bloqueada por múltiples intentos fallidos.');
                 setDetailMessage('');
-                handleLocked();
+                setShowBackupOption(false);
+                // Esperar 1 segundo y redirigir
+                setTimeout(() => {
+                    handleLocked();
+                }, 1000);
+            } else if (newAttempts === 1) {
+                // Segundo fallo - alerta de bloqueo inminente
+                setStatus('warning');
+                const friendlyMsg = translateError(response.message || 'Error en el procesamiento facial');
+                setMessage('⚠️ ADVERTENCIA: Si falla de nuevo, su cuenta será BLOQUEADA');
+                setDetailMessage(friendlyMsg);
+                setShowBackupOption(true); // Mostrar opción de backup
+            } else {
+                // Primer fallo - mostrar error y opción de backup
+                setStatus('error');
+                const friendlyMsg = translateError(response.message || 'Error en el procesamiento facial');
+                setMessage(friendlyMsg);
+                
+                if (response.message && response.message !== friendlyMsg) {
+                    setDetailMessage(response.message);
+                }
+                setShowBackupOption(true); // Mostrar opción de backup desde el primer fallo
             }
         }
         if (onError) onError(response.message);
@@ -163,12 +191,9 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
         if (errorResponse?.response?.data?.data?.account_locked || errorDetail.includes('bloqueada')) {
             setStatus('locked');
             setMessage('Su cuenta ha sido bloqueada por seguridad. Redirigiendo al login...');
+            setShowBackupOption(false);
             handleLocked();
         } else {
-            setStatus('error');
-            const friendlyMsg = translateError(errorDetail || 'Error al procesar la imagen. Intente de nuevo.');
-            setMessage(friendlyMsg);
-
             // Actualizar intentos restantes
             let newAttempts = remainingAttempts;
             if (errorResponse?.response?.data?.data?.remaining_attempts !== undefined) {
@@ -179,11 +204,23 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                 setRemainingAttempts(newAttempts);
             }
 
-            // Si se agotaron los intentos, redirigir al login
-            if (newAttempts <= 0) {
+            // Lógica de alertas progresivas
+            if (newAttempts === 0) {
                 setStatus('locked');
-                setMessage('Se agotaron los intentos. Redirigiendo al login...');
-                handleLocked();
+                setMessage('Cuenta bloqueada por múltiples intentos fallidos.');
+                setShowBackupOption(false);
+                setTimeout(() => {
+                    handleLocked();
+                }, 1000);
+            } else if (newAttempts === 1) {
+                setStatus('warning');
+                setMessage('⚠️ ADVERTENCIA: Si falla de nuevo, su cuenta será BLOQUEADA');
+                setShowBackupOption(true);
+            } else {
+                setStatus('error');
+                const friendlyMsg = translateError(errorDetail || 'Error al procesar la imagen. Intente de nuevo.');
+                setMessage(friendlyMsg);
+                setShowBackupOption(true);
             }
         }
         if (onError) onError(errorDetail);
@@ -200,6 +237,13 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
             setStatus('idle');
             setMessage('');
             setDetailMessage('');
+            // No resetear showBackupOption, mantenerlo visible si ya falló una vez
+        }
+    };
+
+    const handleUseBackupCode = () => {
+        if (onShowBackupCode) {
+            onShowBackupCode();
         }
     };
 
@@ -361,10 +405,17 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                         Su cuenta ha sido bloqueada temporalmente debido a múltiples intentos fallidos de verificación facial.
                     </p>
                     <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700 max-w-sm">
-                        <p className="text-sm text-gray-300 text-center">
-                            <span className="font-semibold text-white">¿Necesita ayuda?</span><br />
-                            Contacte con el administrador del sistema para desbloquear su cuenta.
-                        </p>
+                        {userRole === 'admin' ? (
+                            <p className="text-sm text-gray-300 text-center">
+                                <span className="font-semibold text-white">Acceso Bloqueado</span><br />
+                                Su cuenta de administrador se desbloqueará automáticamente en <span className="font-bold text-orange-400">10 minutos</span>.
+                            </p>
+                        ) : (
+                            <p className="text-sm text-gray-300 text-center">
+                                <span className="font-semibold text-white">¿Necesita ayuda?</span><br />
+                                Contacte con el administrador del sistema para desbloquear su cuenta.
+                            </p>
+                        )}
                         <p className="mt-3 text-xs text-gray-500 text-center">
                             📧 admin@loginseguro.com
                         </p>
@@ -456,13 +507,71 @@ export function FaceCapture({ mode, onSuccess, onError }: FaceCaptureProps) {
                             </p>
                         </div>
                     </div>
-                    <Button
-                        variant="secondary"
-                        className="w-full mt-4"
-                        onClick={handleRetry}
-                    >
-                        Intentar de nuevo
-                    </Button>
+                    <div className="flex gap-2 mt-4">
+                        <Button
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={handleRetry}
+                        >
+                            Intentar de nuevo
+                        </Button>
+                        {showBackupOption && onShowBackupCode && (
+                            <Button
+                                variant="secondary"
+                                className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
+                                onClick={handleUseBackupCode}
+                            >
+                                🔑 Usar Código
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Warning state - Segundo fallo, alerta de bloqueo inminente */}
+            {status === 'warning' && !isProcessing && remainingAttempts > 0 && (
+                <div className="mt-6 p-4 rounded-lg bg-yellow-500/20 border-2 border-yellow-500/50 animate-pulse">
+                    <div className="flex items-start space-x-3">
+                        <svg
+                            className="w-6 h-6 text-yellow-400 flex-shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                        </svg>
+                        <div className="flex-1">
+                            <p className="text-base text-yellow-400 font-bold">{message}</p>
+                            {detailMessage && (
+                                <p className="mt-2 text-sm text-gray-300">{detailMessage}</p>
+                            )}
+                            <p className="mt-2 text-sm text-yellow-300 font-medium">
+                                Le queda {remainingAttempts} intento. Use el código de respaldo si tiene problemas.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                        <Button
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={handleRetry}
+                        >
+                            Último intento
+                        </Button>
+                        {onShowBackupCode && (
+                            <Button
+                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-bold"
+                                onClick={handleUseBackupCode}
+                            >
+                                🔑 Usar Código de Respaldo
+                            </Button>
+                        )}
+                    </div>
                 </div>
             )}
 

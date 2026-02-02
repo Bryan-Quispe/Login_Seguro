@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 # Configuración de intentos
 MAX_FACE_ATTEMPTS = 3
-FACE_LOCKOUT_MINUTES = 15
+FACE_LOCKOUT_MINUTES = 15  # Para usuarios normales: bloqueo largo (admin desbloquea)
+ADMIN_LOCKOUT_MINUTES = 10  # Para admin: solo 10 minutos de bloqueo
 
 
 class VerifyFaceUseCase:
@@ -124,14 +125,23 @@ class VerifyFaceUseCase:
         """
         Maneja un intento fallido de verificación facial.
         Retorna el número de intentos restantes.
+        
+        - Admin: bloqueo temporal de 10 minutos
+        - Otros usuarios: bloqueo hasta que admin desbloquee (largo plazo)
         """
         new_attempts = user.failed_login_attempts + 1
         locked_until = None
         
         # Bloquear cuenta si excede el límite
         if new_attempts >= MAX_FACE_ATTEMPTS:
-            locked_until = datetime.now() + timedelta(minutes=FACE_LOCKOUT_MINUTES)
-            logger.warning(f"Cuenta bloqueada por verificación facial fallida: {user.username}")
+            # Admin solo se bloquea 10 minutos
+            if user.role == 'admin':
+                locked_until = datetime.now() + timedelta(minutes=ADMIN_LOCKOUT_MINUTES)
+                logger.warning(f"Admin bloqueado temporalmente por 10 minutos: {user.username}")
+            else:
+                # Usuarios normales: bloqueo largo (prácticamente permanente hasta desbloqueo manual)
+                locked_until = datetime.now() + timedelta(days=365)  # 1 año = "permanente"
+                logger.warning(f"Cuenta bloqueada permanentemente hasta desbloqueo manual: {user.username}")
         
         self._user_repository.update_failed_attempts(user.id, new_attempts, locked_until)
         

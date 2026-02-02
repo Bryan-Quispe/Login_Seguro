@@ -42,6 +42,7 @@ export function Input({
             transition-all duration-300
             hover:border-gray-600
             ${error ? 'border-red-500 focus:ring-red-500' : ''}
+            ${props.disabled ? 'opacity-50 cursor-not-allowed bg-gray-900/50' : ''}
             ${className}
           `}
                     {...props}
