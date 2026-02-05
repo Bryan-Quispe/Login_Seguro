@@ -331,7 +331,6 @@ Si los modelos DNN no están disponibles, el sistema usa automáticamente:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Intentos de login | 5 máximo |
 | Intentos de verificación facial | 3 máximo |
 | Tiempo de bloqueo | 15 minutos |
 | Desbloqueo | Automático o por administrador |
