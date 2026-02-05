@@ -471,9 +471,6 @@ Los reportes se generan en:
 
 > **IMPORTANTE:** Para un registro facial exitoso, el usuario debe:
 
-- ✅ **Sin lentes** (de sol o recetados)
-- ✅ **Sin mascarilla** o cualquier cobertura facial
-- ✅ **Sin gorras o sombreros**
 - ✅ **Buena iluminación** (luz frontal)
 - ✅ **Mirar directamente a la cámara**
 - ✅ **Rostro centrado** en el marco
@@ -541,6 +538,22 @@ Los reportes se generan en:
 - [SFace: Sigmoid-Constrained Hypersphere Loss](https://arxiv.org/abs/2205.12010)
 - [Next.js Documentation](https://nextjs.org/docs)
 - [React Webcam](https://github.com/mozmorris/react-webcam)
+
+---
+
+## 🛡️ Anti-Spoofing (Modo Estricto)
+
+Se implementó un **modo estricto** de anti-spoofing para bloquear fotos en pantallas/celulares. El sistema ahora evalúa:
+
+- **Textura** (varianza Laplaciana) con umbrales más altos
+- **Contraste** mínimo reforzado
+- **Entropía LBP** para diferenciar piel real de superficies planas
+- **Energía de bajas frecuencias** (detección de patrones típicos de pantallas)
+- **Picos de frecuencia** (indicadores de muaré/artefactos de display)
+- **Densidad de bordes** para descartar superficies artificiales
+- **Rechazo inmediato** si falla cualquier regla crítica
+
+> Nota: en modo estricto puede aumentar la tasa de falsos negativos en condiciones de baja iluminación.
 
 ---
 
