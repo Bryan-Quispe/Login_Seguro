@@ -86,3 +86,25 @@ class IFaceService(ABC):
                 - message: Mensaje descriptivo
         """
         pass
+    
+    @abstractmethod
+    def verify_face_encoding(self,
+                             new_encoding: List[float],
+                             stored_encoding: List[float],
+                             threshold: float = 0.30) -> Tuple[bool, float, str]:
+        """
+        Compara dos encodings faciales directamente sin necesidad de imagen.
+        Usado para verificar si un rostro ya existe en otra cuenta.
+        
+        Args:
+            new_encoding: Encoding del nuevo rostro
+            stored_encoding: Encoding almacenado en BD
+            threshold: Umbral de distancia (menor = más estricto)
+            
+        Returns:
+            Tuple[bool, float, str]:
+                - is_match: True si los rostros coinciden
+                - similarity: Nivel de similitud (0-1)
+                - message: Mensaje descriptivo
+        """
+        pass

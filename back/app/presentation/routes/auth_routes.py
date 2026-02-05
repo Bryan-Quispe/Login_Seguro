@@ -128,7 +128,6 @@ async def logout(
 ):
     """
     Cierra la sesión del usuario.
-    Limpia el token de sesión activa para permitir nuevos logins.
     """
     user_id = get_current_user_id(payload)
     user = user_repo.find_by_id(user_id)
@@ -138,10 +137,6 @@ async def logout(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado"
         )
-    
-    # Limpiar token de sesión activa
-    user.active_session_token = None
-    user_repo.update(user)
     
     logger.info(f"Usuario {user.username} cerró sesión")
     

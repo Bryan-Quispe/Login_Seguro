@@ -286,6 +286,46 @@ class UserRepositoryImpl(IUserRepository):
             
             return success
     
+    def get_users_with_face_encoding(self, exclude_user_id: int = None) -> List[User]:
+        """
+        Obtiene todos los usuarios que tienen rostro registrado.
+        Excluye opcionalmente un usuario específico.
+        """
+        if exclude_user_id:
+            query = """
+                SELECT id, username, email, password_hash, face_encoding, 
+                       face_registered, failed_login_attempts, locked_until,
+                       COALESCE(role, 'user') as role,
+                       COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                       backup_code_hash, backup_code_encrypted,
+                       active_session_token,
+                       created_at, updated_at
+                FROM users 
+                WHERE face_registered = TRUE 
+                AND face_encoding IS NOT NULL
+                AND id != %s
+            """
+            params = (exclude_user_id,)
+        else:
+            query = """
+                SELECT id, username, email, password_hash, face_encoding, 
+                       face_registered, failed_login_attempts, locked_until,
+                       COALESCE(role, 'user') as role,
+                       COALESCE(requires_password_reset, FALSE) as requires_password_reset,
+                       backup_code_hash, backup_code_encrypted,
+                       active_session_token,
+                       created_at, updated_at
+                FROM users 
+                WHERE face_registered = TRUE 
+                AND face_encoding IS NOT NULL
+            """
+            params = ()
+        
+        with self._db.get_cursor(commit=False) as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+    
     def _row_to_user(self, row: tuple) -> User:
         """Convierte una fila de BD a entidad User"""
         return User(

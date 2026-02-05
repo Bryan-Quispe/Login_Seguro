@@ -372,6 +372,78 @@ class OpenCVDNNFaceService(IFaceService):
             'face_match': face_match,
             'distance': float(distance)
         }, face_msg
+    
+    def verify_face_encoding(self,
+                             new_encoding: List[float],
+                             stored_encoding: List[float],
+                             threshold: float = None) -> Tuple[bool, float, str]:
+        """
+        Compara dos encodings faciales directamente sin necesidad de imagen.
+        Usado para verificar si un rostro ya existe en otra cuenta.
+        
+        Args:
+            new_encoding: Encoding del nuevo rostro
+            stored_encoding: Encoding almacenado en BD
+            threshold: Umbral de distancia (menor = más estricto)
+            
+        Returns:
+            Tuple[is_match, similarity, message]
+        """
+        threshold = threshold or 0.30
+        
+        try:
+            current = np.array(new_encoding, dtype=np.float32)
+            stored = np.array(stored_encoding, dtype=np.float32)
+            
+            # Verificar compatibilidad de dimensiones
+            if len(current) != len(stored):
+                return False, 0.0, "Dimensiones incompatibles"
+            
+            if self._use_dnn and len(current) == 128:
+                # Usar métricas de SFace para embeddings de 128D
+                current_2d = current.reshape(1, -1)
+                stored_2d = stored.reshape(1, -1)
+                
+                # Similitud coseno
+                cosine_score = self._recognizer.match(
+                    current_2d, stored_2d, 
+                    cv2.FaceRecognizerSF_FR_COSINE
+                )
+                
+                # Distancia L2 normalizada
+                l2_score = self._recognizer.match(
+                    current_2d, stored_2d,
+                    cv2.FaceRecognizerSF_FR_NORM_L2
+                )
+                
+                l2_similarity = max(0, 1 - l2_score / 2)
+                combined = (cosine_score * 0.7 + l2_similarity * 0.3)
+                
+                MIN_COSINE = 0.35  # Umbral de SFace
+                
+                is_match = cosine_score >= MIN_COSINE and (1 - combined) < threshold
+                
+                logger.debug(f"Comparación encoding: coseno={cosine_score:.3f}, combinado={combined:.3f}")
+                
+                return is_match, float(combined), f"Similitud: {combined*100:.0f}%"
+                
+            else:
+                # Fallback: similitud coseno manual
+                norm_c = np.linalg.norm(current)
+                norm_s = np.linalg.norm(stored)
+                
+                if norm_c > 0 and norm_s > 0:
+                    cosine = float(np.dot(current, stored) / (norm_c * norm_s))
+                else:
+                    cosine = 0.0
+                
+                is_match = cosine >= 0.90  # 90% para LBP
+                
+                return is_match, cosine, f"Similitud: {cosine*100:.0f}%"
+                
+        except Exception as e:
+            logger.error(f"Error comparando encodings: {e}")
+            return False, 0.0, f"Error: {str(e)}"
 
 
 # Aliases para compatibilidad

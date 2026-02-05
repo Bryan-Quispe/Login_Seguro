@@ -131,22 +131,13 @@ export function useAuth() {
 
             // Translate to user-friendly messages según el rol
             if (detail.includes('Credenciales inválidas') || detail.includes('inválidas')) {
-                if (isLocked) {
-                    if (userRole === 'admin') {
-                        friendlyMessage = `Le falta ${remainingMin} minuto(s) para desbloquear su cuenta.`;
-                    } else {
-                        friendlyMessage = `Debe contactar al administrador para desbloquear su cuenta.`;
-                    }
-                } else if (remainingAttempts <= 1) {
-                    friendlyMessage = `⚠️ ADVERTENCIA: Este es su último intento. Si falla, su cuenta será bloqueada.`;
-                } else {
-                    friendlyMessage = `Usuario o contraseña incorrectos. ${remainingAttempts} intento(s) restante(s).`;
-                }
+                // Solo mostrar mensaje genérico, los intentos se validan en verificación facial
+                friendlyMessage = 'Usuario o contraseña incorrectos.';
             } else if (detail.includes('bloqueada') || detail.includes('Cuenta bloqueada')) {
                 friendlyMessage = detail; // Keep lockout message as is
                 setAccountLocked(true);
             } else if (detail.includes('no encontrado')) {
-                friendlyMessage = 'Usuario o contraseña incorrectos';
+                friendlyMessage = 'Usuario o contraseña incorrectos.';
             } else if (detail.includes('conexión') || detail.includes('base de datos')) {
                 friendlyMessage = 'Error de conexión. Intente más tarde.';
             }

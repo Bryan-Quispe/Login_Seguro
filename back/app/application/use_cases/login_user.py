@@ -67,28 +67,16 @@ class LoginUserUseCase:
             
             # Verificar contraseña
             if not verify_password(request.password, user.password_hash):
-                # Incrementar intentos fallidos
-                remaining_attempts = self._handle_failed_attempt(user)
+                # Solo retornar error genérico, no contar intentos aquí
+                # Los intentos se cuentan en la verificación facial
                 logger.warning(f"Contraseña incorrecta para: {user.username}")
                 return False, "Credenciales inválidas", None, {
-                    'remaining_attempts': remaining_attempts,
-                    'account_locked': user.failed_login_attempts >= self._settings.MAX_LOGIN_ATTEMPTS,
                     'role': user.role if hasattr(user, 'role') else 'user'
                 }
             
-            # Verificar si ya existe una sesión activa
-            if user.active_session_token:
-                logger.warning(f"Intento de login con sesión activa existente: {user.username}")
-                return False, "Esta sesión está siendo usada. Por favor desconéctese de la sesión antes de volver a querer entrar.", None, {
-                    'active_session_exists': True,
-                    'role': user.role if hasattr(user, 'role') else 'user'
-                }
-            
-            # Generar token de sesión único
-            session_token = self._generate_session_token()
-            
-            # Actualizar usuario con el nuevo token de sesión
-            user.active_session_token = session_token
+            # Resetear intentos fallidos en login exitoso
+            user.failed_login_attempts = 0
+            user.lock_until = None
             self._user_repository.update(user)
             
             # Generar token JWT
