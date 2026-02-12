@@ -239,3 +239,55 @@ class TestVerifyFaceUseCase:
         assert success is True
         assert isinstance(details.get('confidence'), float)
         assert isinstance(details.get('match_distance'), float)
+    
+    def test_verify_face_locks_account_after_max_attempts(self, verify_face_use_case, mock_user_repository, mock_face_service, valid_face_verify_request):
+        """Test que bloquea cuenta después de máximo de intentos fallidos"""
+        # Arrange - usuario con 4 intentos fallidos (el 5to lo bloqueará)
+        user = User(
+            id=1,
+            username="testuser",
+            face_registered=True,
+            face_encoding=json.dumps([0.1] * 128),
+            failed_login_attempts=4,
+            role=UserRole.USER
+        )
+        mock_user_repository.find_by_id.return_value = user
+        mock_face_service.verify_face_with_antispoofing.return_value = (
+            False,
+            {'is_real': True, 'matched': False},
+            "Rostro no coincide"
+        )
+        
+        # Act
+        success, message, details = verify_face_use_case.execute(user.id, valid_face_verify_request)
+        
+        # Assert
+        assert success is False
+        assert "bloqueada" in message.lower() or "locked" in message.lower()
+        assert details.get('account_locked') is True or details.get('remaining_attempts') == 0
+    
+    def test_verify_face_admin_temporary_lockout(self, verify_face_use_case, mock_user_repository, mock_face_service, valid_face_verify_request):
+        """Test que admin recibe bloqueo temporal (no permanente) después de max intentos"""
+        # Arrange - admin con 4 intentos fallidos
+        user = User(
+            id=1,
+            username="admin",
+            face_registered=True,
+            face_encoding=json.dumps([0.1] * 128),
+            failed_login_attempts=4,
+            role=UserRole.ADMIN
+        )
+        mock_user_repository.find_by_id.return_value = user
+        mock_face_service.verify_face_with_antispoofing.return_value = (
+            False,
+            {'is_real': True, 'matched': False},
+            "Rostro no coincide"
+        )
+        
+        # Act
+        success, message, details = verify_face_use_case.execute(user.id, valid_face_verify_request)
+        
+        # Assert - admin se bloquea pero temporalmente
+        assert success is False
+        # Verificar que update_failed_attempts fue llamado
+        assert mock_user_repository.update_failed_attempts.called

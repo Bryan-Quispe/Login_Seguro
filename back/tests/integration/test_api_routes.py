@@ -213,3 +213,97 @@ class TestCORS:
         
         # Debería procesar la petición
         assert response.status_code != 403
+
+
+class TestAdminRoutes:
+    """Tests para rutas administrativas"""
+    
+    @pytest.mark.asyncio
+    async def test_list_users_requires_auth(self, client):
+        """Test que listar usuarios requiere autenticación"""
+        response = await client.get("/api/admin/users")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_blocked_users_requires_auth(self, client):
+        """Test que listar usuarios bloqueados requiere autenticación"""
+        response = await client.get("/api/admin/users/blocked")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_unlock_user_requires_auth(self, client):
+        """Test que desbloquear usuario requiere autenticación"""
+        response = await client.post("/api/admin/unlock/1")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_disable_user_requires_auth(self, client):
+        """Test que deshabilitar usuario requiere autenticación"""
+        response = await client.post("/api/admin/disable/1")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_enable_user_requires_auth(self, client):
+        """Test que habilitar usuario requiere autenticación"""
+        response = await client.post("/api/admin/enable/1")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_get_stats_requires_auth(self, client):
+        """Test que obtener estadísticas requiere autenticación"""
+        response = await client.get("/api/admin/stats")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_search_users_requires_auth(self, client):
+        """Test que buscar usuarios requiere autenticación"""
+        response = await client.get("/api/admin/users/search?q=test")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+    
+    @pytest.mark.asyncio
+    async def test_create_user_requires_auth(self, client):
+        """Test que crear usuario requiere autenticación"""
+        response = await client.post("/api/admin/users", json={
+            "username": "newuser",
+            "password": "Test@12345"
+        })
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403, 422]
+    
+    @pytest.mark.asyncio
+    async def test_update_user_requires_auth(self, client):
+        """Test que actualizar usuario requiere autenticación"""
+        response = await client.put("/api/admin/users/1", json={
+            "email": "new@example.com"
+        })
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403, 422]
+
+
+class TestAuditRoutes:
+    """Tests para rutas de auditoría"""
+    
+    @pytest.mark.asyncio
+    async def test_get_audit_logs_requires_auth(self, client):
+        """Test que obtener logs requiere autenticación"""
+        response = await client.get("/api/audit/logs")
+        
+        # Debe requerir autenticación
+        assert response.status_code in [401, 403]
+

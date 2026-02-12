@@ -1,0 +1,14 @@
+Cobertura de Código - Resumen
+
+Cobertura Total: 80.15%
+Líneas Totales: 1,602
+Líneas Cubiertas: 1,284
+Líneas Faltantes: 318
+
+Cobertura por módulo:
+- app/domain/entities/ : 88.46%
+- app/config/            : 88.89%
+- app/main.py            : 86.52%
+- app/application/use_cases/ : 85.58%
+- app/presentation/routes/    : 84.49%
+- app/infrastructure/    : 76.83%

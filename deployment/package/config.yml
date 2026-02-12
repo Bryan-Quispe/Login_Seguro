@@ -1,0 +1,124 @@
+# Configuración del Pipeline CI/CD de Seguridad
+# Este archivo define los parámetros del escaneo automático
+
+# Configuración del modelo
+model:
+  path: "ml_model/vulnerability_detector.pkl"
+  threshold: 0.70  # Umbral de probabilidad para marcar como vulnerable (70%)
+  
+# Configuración del scanner
+scanner:
+  # Extensiones de archivos a escanear
+  file_extensions:
+    - ".py"
+    - ".js"
+  
+  # Directorios a excluir del escaneo
+  excluded_directories:
+    - "__pycache__"
+    - "node_modules"
+    - ".git"
+    - "venv"
+    - "env"
+    - ".venv"
+    - "build"
+    - "dist"
+    - ".pytest_cache"
+    - ".tox"
+    - "htmlcov"
+    - ".mypy_cache"
+  
+  # Patrones de archivos a excluir
+  excluded_patterns:
+    - "test_*.py"
+    - "*_test.py"
+    - "*.test.js"
+    - "*.spec.js"
+  
+  # Incluir tests en el escaneo (false = excluir tests)
+  scan_tests: false
+
+# Configuración de reportes
+reports:
+  output_directory: "reports"
+  formats:
+    - "json"
+    - "html"
+  retention_days: 90  # Días que se mantienen los reports en artifacts
+
+# Configuración CI/CD
+cicd:
+  # Ejecutar en push a estas branches
+  trigger_branches:
+    - "main"
+    - "develop"
+    - "master"
+  
+  # Crear issue automático si se superan estos umbrales
+  issue_threshold:
+    high_risk_count: 3  # Crear issue si hay más de 3 archivos de alto riesgo
+  
+  # Comentar en PR
+  pr_comments: true
+  
+  # Fallar el build si hay vulnerabilidades de alto riesgo
+  fail_on_high_risk: true
+  
+  # Asignar automáticamente al autor del commit
+  auto_assign_issues: true
+
+# Configuración de niveles de riesgo
+risk_levels:
+  critical:
+    min_probability: 0.90
+    label: "CRÍTICO"
+    color: "red"
+  high:
+    min_probability: 0.70
+    label: "ALTO"
+    color: "orange"
+  medium:
+    min_probability: 0.40
+    label: "MEDIO"
+    color: "yellow"
+  low:
+    min_probability: 0.0
+    label: "BAJO"
+    color: "green"
+
+# Características de seguridad a detectar
+security_features:
+  enabled:
+    - "eval_exec_usage"
+    - "sql_injection"
+    - "command_injection"
+    - "path_traversal"
+    - "hardcoded_secrets"
+    - "weak_crypto"
+    - "unsafe_deserialization"
+    - "subprocess_shell"
+    - "bare_except"
+    - "deprecated_libs"
+
+# Notificaciones
+notifications:
+  # Crear issues para vulnerabilidades críticas en push
+  create_issues: true
+  
+  # Labels para los issues creados
+  issue_labels:
+    - "security"
+    - "vulnerability"
+    - "high-priority"
+    - "automated"
+
+# Integración continua
+integration:
+  # Requiere que el modelo exista antes de escanear
+  require_model: true
+  
+  # Timeout para el escaneo (en minutos)
+  scan_timeout: 10
+  
+  # Continuar en caso de error
+  continue_on_error: false

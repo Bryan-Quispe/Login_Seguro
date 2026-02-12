@@ -1,0 +1,21 @@
+# Core ML dependencies
+scikit-learn==1.7.2
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Explainability and visualization
+shap>=0.42.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# API and Deployment
+flask>=3.0.0
+gunicorn>=21.2.0
+requests>=2.31.0
+
+# Configuration
+PyYAML>=6.0
