@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎨 Frontend - Login Seguro
 
-## Getting Started
+Frontend del sistema **Login Seguro** construido con **Next.js 16** + **React 19** + **TypeScript**. Provee la interfaz para autenticación, registro facial y paneles de administración/auditoría.
 
-First, run the development server:
+---
+
+## 🧩 Stack Tecnológico
+
+- **Next.js** 16.1.4 (App Router)
+- **React** 19.2.3
+- **TypeScript** 5.x
+- **Tailwind CSS** 4.x
+- **Axios** para consumo de API
+- **React Webcam** para captura de video
+
+---
+
+## 🚀 Instalación y Ejecución
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# desde /front
+npm install
+npm run dev -- -p 3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrir: http://localhost:3001
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+> El backend debe estar corriendo en http://localhost:3000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 🔧 Scripts Disponibles
 
-To learn more about Next.js, take a look at the following resources:
+| Script | Descripción |
+|--------|-------------|
+| `npm run dev` | Levanta entorno de desarrollo |
+| `npm run build` | Build de producción |
+| `npm run start` | Servir build de producción |
+| `npm run lint` | Ejecuta ESLint |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🔐 Funcionalidades Clave
 
-## Deploy on Vercel
+- Login seguro con JWT
+- Registro facial con webcam
+- Verificación facial (anti-spoofing en backend)
+- Código de respaldo (fallback biométrico)
+- Panel de administración de usuarios
+- Panel de auditoría
+- Gestión de perfil y preferencias
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🧭 Rutas Principales
+
+| Ruta | Descripción |
+|------|-------------|
+| `/` | Home / Landing |
+| `/login` | Login |
+| `/register` | Registro de usuario |
+| `/face-register` | Registro facial |
+| `/face-verify` | Verificación facial |
+| `/dashboard` | Panel del usuario |
+| `/change-password` | Cambio de contraseña |
+| `/admin` | Panel admin |
+| `/audit` | Panel auditoría |
+
+---
+
+## ⚙️ Configuración
+
+El frontend consume la API del backend. Si cambias el host/puerto, ajusta el cliente en:
+
+- [src/services/api.ts](src/services/api.ts)
+
+---
+
+## 🧪 Análisis de Seguridad (Frontend)
+
+```bash
+node run_security_analysis.js
+```
+
+Genera el reporte en `front/security_report_frontend.json`.
+
+---
+
+## ✅ Accesibilidad
+
+- ARIA labels en componentes interactivos
+- Navegación por teclado en formularios
+- Contraste WCAG 2.1 AA
+
+---
+
+**Desarrollado para Software Seguro - 7mo Semestre**

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class RegisterFaceUseCase:
     """
     Caso de uso para registro de rostro.
-    Valida anti-spoofing antes de registrar.
+    Valida anti-spoofing y unicidad del rostro antes de registrar.
     """
     
     def __init__(self, 
@@ -55,6 +55,12 @@ class RegisterFaceUseCase:
                 logger.warning(f"Fallo en registro facial para user {user_id}: {message}")
                 return False, message, {}
             
+            # Verificar que el rostro no esté registrado en otra cuenta
+            duplicate_check = self._check_face_duplicate(encoding, user_id)
+            if duplicate_check:
+                logger.warning(f"Intento de registrar rostro duplicado por user {user_id}")
+                return False, "Este rostro ya fue registrado en otra cuenta. Solo puede tener una cuenta por rostro.", {}
+            
             # Guardar encoding en base de datos
             encoding_json = json.dumps(encoding)
             updated = self._user_repository.update_face_encoding(user_id, encoding_json)
@@ -73,3 +79,44 @@ class RegisterFaceUseCase:
         except Exception as e:
             logger.error(f"Error registrando rostro: {e}")
             return False, "Error interno al registrar rostro", {}
+    
+    def _check_face_duplicate(self, new_encoding: list, exclude_user_id: int) -> bool:
+        """
+        Verifica si el rostro ya está registrado en otra cuenta.
+        
+        Returns:
+            True si el rostro ya existe en otra cuenta, False si es único.
+        """
+        try:
+            # Obtener todos los usuarios con rostro registrado (excepto el actual)
+            users_with_face = self._user_repository.get_users_with_face_encoding(exclude_user_id)
+            
+            if not users_with_face:
+                return False  # No hay otros rostros registrados
+            
+            for existing_user in users_with_face:
+                if not existing_user.face_encoding:
+                    continue
+                
+                try:
+                    stored_encoding = json.loads(existing_user.face_encoding)
+                    
+                    # Comparar rostros usando el servicio
+                    is_match, similarity, _ = self._face_service.verify_face_encoding(
+                        new_encoding, 
+                        stored_encoding
+                    )
+                    
+                    if is_match:
+                        logger.warning(f"Rostro duplicado detectado: coincide con usuario {existing_user.username}")
+                        return True
+                        
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.error(f"Error comparando con usuario {existing_user.id}: {e}")
+                    continue
+            
+            return False  # Rostro único
+            
+        except Exception as e:
+            logger.error(f"Error verificando duplicados de rostro: {e}")
+            return False  # En caso de error, permitir registro

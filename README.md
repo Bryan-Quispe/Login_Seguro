@@ -95,6 +95,39 @@ DATABASE_USER=postgres
 DATABASE_PASSWORD=tu-password-supabase
 ```
 
+#### 🔐 Variables de Entorno Backend (back/.env)
+
+> **Recomendado:** definir todas las variables en `back/.env` para un entorno reproducible.
+
+```env
+# Database
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=login_seguro
+DATABASE_USER=admin
+DATABASE_PASSWORD=SecureP@ssw0rd2024!
+
+# JWT
+JWT_SECRET_KEY=super-secure-jwt-secret-key-change-in-production-2024!
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Security
+BCRYPT_ROUNDS=12
+MAX_LOGIN_ATTEMPTS=3
+LOCKOUT_DURATION_MINUTES=15
+
+# CORS
+CORS_ORIGINS=["http://localhost:3001","http://127.0.0.1:3001"]
+
+# Rate Limiting
+RATE_LIMIT_PER_MINUTE=30
+
+# Face Recognition (compat)
+FACE_RECOGNITION_MODEL=VGG-Face
+FACE_DISTANCE_THRESHOLD=0.6
+```
+
 ### ⚙️ Paso 2: Backend (FastAPI + Python)
 
 ```powershell
@@ -136,6 +169,15 @@ npx next dev -p 3001
 | **ReDoc** | http://localhost:3000/redoc | Documentación alternativa |
 | **Panel Admin** | http://localhost:3001/admin | Gestión de usuarios |
 | **Auditoría** | http://localhost:3001/audit | Logs del sistema |
+
+### 👤 Usuarios del Sistema (Solo desarrollo)
+
+En el arranque, el backend crea/verifica estos usuarios:
+
+- **Admin**: `admin@loginseguro.com` / `S@bryromero123`
+- **Auditor**: `audit` / `S@bryromero123`
+
+> ⚠️ **Importante:** Cambiar credenciales y `JWT_SECRET_KEY` en producción.
 
 ### 🔧 Script de Inicio Rápido (Windows)
 
@@ -289,7 +331,6 @@ Si los modelos DNN no están disponibles, el sistema usa automáticamente:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Intentos de login | 5 máximo |
 | Intentos de verificación facial | 3 máximo |
 | Tiempo de bloqueo | 15 minutos |
 | Desbloqueo | Automático o por administrador |
@@ -430,9 +471,6 @@ Los reportes se generan en:
 
 > **IMPORTANTE:** Para un registro facial exitoso, el usuario debe:
 
-- ✅ **Sin lentes** (de sol o recetados)
-- ✅ **Sin mascarilla** o cualquier cobertura facial
-- ✅ **Sin gorras o sombreros**
 - ✅ **Buena iluminación** (luz frontal)
 - ✅ **Mirar directamente a la cámara**
 - ✅ **Rostro centrado** en el marco
@@ -446,8 +484,11 @@ Los reportes se generan en:
 |--------|----------|-------------|
 | `POST` | `/api/auth/register` | Registrar usuario |
 | `POST` | `/api/auth/login` | Login con credenciales |
+| `POST` | `/api/auth/logout` | Cerrar sesión |
 | `GET` | `/api/auth/profile` | Obtener perfil de usuario |
 | `PATCH` | `/api/auth/preferences` | Actualizar preferencias |
+| `POST` | `/api/auth/change-password` | Cambiar contraseña (obligatorio si aplica) |
+| `GET` | `/api/auth/health` | Health check de autenticación |
 
 ### Biometría Facial
 | Método | Endpoint | Descripción |
@@ -475,7 +516,8 @@ Los reportes se generan en:
 ### Auditoría
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| `GET` | `/api/audit/logs` | Ver logs de auditoría (solo auditor/admin) |
+| `GET` | `/api/audit/logs` | Ver logs de auditoría (solo auditor) |
+| `GET` | `/api/audit/stats` | Estadísticas de auditoría (solo auditor) |
 
 ---
 
@@ -496,6 +538,22 @@ Los reportes se generan en:
 - [SFace: Sigmoid-Constrained Hypersphere Loss](https://arxiv.org/abs/2205.12010)
 - [Next.js Documentation](https://nextjs.org/docs)
 - [React Webcam](https://github.com/mozmorris/react-webcam)
+
+---
+
+## 🛡️ Anti-Spoofing (Modo Estricto)
+
+Se implementó un **modo estricto** de anti-spoofing para bloquear fotos en pantallas/celulares. El sistema ahora evalúa:
+
+- **Textura** (varianza Laplaciana) con umbrales más altos
+- **Contraste** mínimo reforzado
+- **Entropía LBP** para diferenciar piel real de superficies planas
+- **Energía de bajas frecuencias** (detección de patrones típicos de pantallas)
+- **Picos de frecuencia** (indicadores de muaré/artefactos de display)
+- **Densidad de bordes** para descartar superficies artificiales
+- **Rechazo inmediato** si falla cualquier regla crítica
+
+> Nota: en modo estricto puede aumentar la tasa de falsos negativos en condiciones de baja iluminación.
 
 ---
 

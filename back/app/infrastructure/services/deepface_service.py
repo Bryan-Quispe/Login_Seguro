@@ -328,22 +328,108 @@ class OpenCVDNNFaceService(IFaceService):
             gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
             laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
             
-            texture = min(laplacian_var / 200.0, 1.0)
+            # ===== Heurísticas Anti-Spoofing =====
+            # 1) Textura (Laplacian) y contraste
+            texture = min(laplacian_var / 220.0, 1.0)
             contrast = gray.std()
             contrast_score = min(contrast / 50.0, 1.0)
-            
-            confidence = float((texture * 0.7) + (contrast_score * 0.3))
-            
-            is_real = laplacian_var > 30 and contrast > 20
-            
+
+            # 2) Entropía de textura (LBP) para detectar pantallas/fotos lisas
+            # LBP básico 3x3
+            center = gray[1:-1, 1:-1]
+            lbp = (
+                ((gray[:-2, :-2] > center) << 7) |
+                ((gray[:-2, 1:-1] > center) << 6) |
+                ((gray[:-2, 2:] > center) << 5) |
+                ((gray[1:-1, 2:] > center) << 4) |
+                ((gray[2:, 2:] > center) << 3) |
+                ((gray[2:, 1:-1] > center) << 2) |
+                ((gray[2:, :-2] > center) << 1) |
+                ((gray[1:-1, :-2] > center) << 0)
+            ).astype(np.uint8)
+
+            hist = cv2.calcHist([lbp], [0], None, [256], [0, 256])
+            hist_sum = float(hist.sum()) if hist is not None else 0.0
+            if hist_sum > 0:
+                p = (hist / hist_sum).flatten()
+                # Evitar log(0)
+                p = p[p > 0]
+                lbp_entropy = float(-(p * np.log2(p)).sum())
+            else:
+                lbp_entropy = 0.0
+
+            entropy_score = min(lbp_entropy / 5.0, 1.0)
+
+            # 3) Brillo especular (pantallas con reflejos)
+            glare_ratio = float((gray > 245).mean())
+
+            confidence = float((texture * 0.5) + (contrast_score * 0.2) + (entropy_score * 0.3))
+
+            # ===== Detección de pantalla (frecuencia) =====
+            # Fotos en pantallas suelen presentar picos de frecuencia periódicos
+            try:
+                f = np.fft.fft2(gray)
+                fshift = np.fft.fftshift(f)
+                magnitude = np.abs(fshift)
+                h, w = magnitude.shape
+                # Enmascarar bajas frecuencias (centro)
+                cy, cx = h // 2, w // 2
+                r = int(min(h, w) * 0.1)
+                magnitude[cy - r:cy + r, cx - r:cx + r] = 0
+                high_mean = float(magnitude.mean()) if magnitude.size else 0.0
+                high_max = float(magnitude.max()) if magnitude.size else 0.0
+                peak_ratio = (high_max / high_mean) if high_mean > 0 else 0.0
+
+                # Energía de bajas frecuencias (pantallas/fotos tienden a ser dominantes en low-freq)
+                magnitude_full = np.abs(fshift)
+                low_r = int(min(h, w) * 0.15)
+                low_mask = np.zeros_like(magnitude_full, dtype=np.uint8)
+                cv2.circle(low_mask, (cx, cy), low_r, 1, -1)
+                low_energy = float((magnitude_full * low_mask).sum())
+                total_energy = float(magnitude_full.sum()) if magnitude_full.size else 1.0
+                low_freq_ratio = low_energy / total_energy if total_energy > 0 else 1.0
+            except Exception:
+                peak_ratio = 0.0
+                low_freq_ratio = 1.0
+
+            # ===== Densidad de bordes (pantallas tienden a bordes más duros y uniformes) =====
+            sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            edge_mag = np.sqrt(sobelx**2 + sobely**2)
+            edge_density = float((edge_mag > 20).mean())
+
+            # Umbrales más estrictos para evitar spoofing en pantallas
+            # ===== Modo Estricto =====
+            # Reglas base más duras
+            is_real = (
+                (laplacian_var > 90) and
+                (contrast > 35) and
+                (lbp_entropy > 4.8) and
+                (edge_density > 0.07) and
+                (edge_density < 0.22) and
+                (glare_ratio < 0.04) and
+                (low_freq_ratio < 0.88) and
+                (peak_ratio < 30)
+            )
+
+            # Reglas de rechazo inmediato
+            if glare_ratio > 0.04:
+                is_real = False
+            if peak_ratio >= 30:
+                is_real = False
+            if low_freq_ratio >= 0.88:
+                is_real = False
+            if laplacian_var < 90 or contrast < 35 or lbp_entropy < 4.8:
+                is_real = False
+
             if is_real:
                 return True, confidence, "Rostro real"
-            else:
-                return False, confidence, "Posible spoofing"
+            return False, confidence, "Posible spoofing (pantalla/foto)"
             
         except Exception as e:
             logger.error(f"Error anti-spoofing: {e}")
-            return True, 0.5, "No verificado"
+            # Fail-safe: si no se puede verificar, se rechaza
+            return False, 0.0, "No verificado"
     
     def verify_face_with_antispoofing(self,
                                       image_data: bytes,
@@ -372,6 +458,78 @@ class OpenCVDNNFaceService(IFaceService):
             'face_match': face_match,
             'distance': float(distance)
         }, face_msg
+    
+    def verify_face_encoding(self,
+                             new_encoding: List[float],
+                             stored_encoding: List[float],
+                             threshold: float = None) -> Tuple[bool, float, str]:
+        """
+        Compara dos encodings faciales directamente sin necesidad de imagen.
+        Usado para verificar si un rostro ya existe en otra cuenta.
+        
+        Args:
+            new_encoding: Encoding del nuevo rostro
+            stored_encoding: Encoding almacenado en BD
+            threshold: Umbral de distancia (menor = más estricto)
+            
+        Returns:
+            Tuple[is_match, similarity, message]
+        """
+        threshold = threshold or 0.30
+        
+        try:
+            current = np.array(new_encoding, dtype=np.float32)
+            stored = np.array(stored_encoding, dtype=np.float32)
+            
+            # Verificar compatibilidad de dimensiones
+            if len(current) != len(stored):
+                return False, 0.0, "Dimensiones incompatibles"
+            
+            if self._use_dnn and len(current) == 128:
+                # Usar métricas de SFace para embeddings de 128D
+                current_2d = current.reshape(1, -1)
+                stored_2d = stored.reshape(1, -1)
+                
+                # Similitud coseno
+                cosine_score = self._recognizer.match(
+                    current_2d, stored_2d, 
+                    cv2.FaceRecognizerSF_FR_COSINE
+                )
+                
+                # Distancia L2 normalizada
+                l2_score = self._recognizer.match(
+                    current_2d, stored_2d,
+                    cv2.FaceRecognizerSF_FR_NORM_L2
+                )
+                
+                l2_similarity = max(0, 1 - l2_score / 2)
+                combined = (cosine_score * 0.7 + l2_similarity * 0.3)
+                
+                MIN_COSINE = 0.35  # Umbral de SFace
+                
+                is_match = cosine_score >= MIN_COSINE and (1 - combined) < threshold
+                
+                logger.debug(f"Comparación encoding: coseno={cosine_score:.3f}, combinado={combined:.3f}")
+                
+                return is_match, float(combined), f"Similitud: {combined*100:.0f}%"
+                
+            else:
+                # Fallback: similitud coseno manual
+                norm_c = np.linalg.norm(current)
+                norm_s = np.linalg.norm(stored)
+                
+                if norm_c > 0 and norm_s > 0:
+                    cosine = float(np.dot(current, stored) / (norm_c * norm_s))
+                else:
+                    cosine = 0.0
+                
+                is_match = cosine >= 0.90  # 90% para LBP
+                
+                return is_match, cosine, f"Similitud: {cosine*100:.0f}%"
+                
+        except Exception as e:
+            logger.error(f"Error comparando encodings: {e}")
+            return False, 0.0, f"Error: {str(e)}"
 
 
 # Aliases para compatibilidad

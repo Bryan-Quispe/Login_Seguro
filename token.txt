@@ -9,11 +9,12 @@ Auditor: BQUISPE-LAPTOP-2026-AUDITORIA-TOKEN-SECURE
 - **Contraseña:** S@bryromero123
 
 usuario
-8D77BBDC  Garcia
-00706CC2  Mateo
+77B5C248  Garcia  Antiguo
+00706CC2  Mateo   Antiguo
+A5CACBAC
  
 admin
-0FCC3C6F
+974BC08E
 
 audit
-5ABCD736
+101A94EA
